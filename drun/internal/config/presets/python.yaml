@@ -1,0 +1,45 @@
+image: "python:3.12"
+workdir: "/workspace"
+
+setup:
+  packages:
+    - git
+  deps:
+    command: "pip install -r requirements.txt"
+    triggers:
+      - "requirements.txt"
+      - "pyproject.toml"
+
+mounts:
+  - source: "."
+    target: "/workspace"
+  - source: "${HOME}/.cache/pip"
+    target: "/root/.cache/pip"
+
+env:
+  - "PYTHONDONTWRITEBYTECODE=1"
+  - "PYTHONUNBUFFERED=1"
+
+process:
+  init: true
+  kill_on_exit: true
+  grace_period: "5s"
+  cleanup_orphans: true
+
+scripts:
+  test:
+    command: "pytest"
+    description: "Run tests"
+  lint:
+    command: "ruff check ."
+    description: "Run linter"
+
+dev:
+  lsp:
+    name: pylsp
+    command: "pylsp --tcp --host 0.0.0.0 --port 5678"
+    port: 5678
+  dap:
+    name: debugpy
+    command: "python -m debugpy --listen 0.0.0.0:5679 --wait-for-client"
+    port: 5679

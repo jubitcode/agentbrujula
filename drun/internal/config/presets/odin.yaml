@@ -1,0 +1,33 @@
+image: "ubuntu:22.04"
+workdir: "/workspace"
+
+setup:
+  packages:
+    - git
+    - clang
+    - llvm
+  run:
+    - "git clone --depth 1 https://github.com/odin-lang/Odin /opt/odin"
+    - "cd /opt/odin && make release"
+    - "ln -s /opt/odin/odin /usr/local/bin/odin"
+
+mounts:
+  - source: "."
+    target: "/workspace"
+
+process:
+  init: true
+  kill_on_exit: true
+  grace_period: "5s"
+  cleanup_orphans: true
+
+scripts:
+  build:
+    command: "odin build ."
+    description: "Build project"
+  run:
+    command: "odin run ."
+    description: "Build and run"
+  test:
+    command: "odin test ."
+    description: "Run tests"

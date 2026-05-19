@@ -1,0 +1,45 @@
+image: "node:20"
+workdir: "/workspace"
+
+setup:
+  deps:
+    command: "npm ci"
+    triggers:
+      - "package.json"
+      - "package-lock.json"
+
+mounts:
+  - source: "."
+    target: "/workspace"
+  - source: "${HOME}/.npm"
+    target: "/root/.npm"
+
+env:
+  - "NODE_ENV=development"
+
+process:
+  init: true
+  kill_on_exit: true
+  grace_period: "5s"
+  cleanup_orphans: true
+
+scripts:
+  test:
+    command: "npm test"
+    description: "Run tests"
+  dev:
+    command: "npm run dev"
+    description: "Start development server"
+  build:
+    command: "npm run build"
+    description: "Build for production"
+
+dev:
+  lsp:
+    name: tsserver
+    command: "npx typescript-language-server --stdio"
+    port: 9229
+  dap:
+    name: node-debug
+    command: "node --inspect=0.0.0.0:9230"
+    port: 9230

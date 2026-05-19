@@ -1,0 +1,46 @@
+image: "rust:1.75"
+workdir: "/workspace"
+
+mounts:
+  - source: "."
+    target: "/workspace"
+  - source: "${HOME}/.cargo/registry"
+    target: "/usr/local/cargo/registry"
+  - source: "${HOME}/.cargo/git"
+    target: "/usr/local/cargo/git"
+  - source: "./target"
+    target: "/workspace/target"
+
+env:
+  - "CARGO_HOME=/usr/local/cargo"
+  - "RUSTUP_HOME=/usr/local/rustup"
+
+process:
+  init: true
+  kill_on_exit: true
+  grace_period: "5s"
+  cleanup_orphans: true
+
+scripts:
+  test:
+    command: "cargo test"
+    description: "Run tests"
+  build:
+    command: "cargo build"
+    description: "Build project"
+  check:
+    command: "cargo check"
+    description: "Check compilation"
+  clippy:
+    command: "cargo clippy"
+    description: "Run linter"
+
+dev:
+  lsp:
+    name: rust-analyzer
+    command: "rust-analyzer --listen=0.0.0.0:6390"
+    port: 6390
+  dap:
+    name: lldb
+    command: "lldb-dap --port 38698"
+    port: 38698

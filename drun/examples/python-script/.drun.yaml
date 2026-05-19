@@ -1,0 +1,29 @@
+image: "python:3.12-slim"
+workdir: "/workspace"
+
+setup:
+  deps:
+    command: "pip install -r requirements.txt"
+    triggers:
+      - "requirements.txt"
+
+mounts:
+  - source: "."
+    target: "/workspace"
+
+scripts:
+  run:
+    command: "python main.py"
+    description: "Run the script"
+
+  test:
+    command: "python -m pytest tests/ -v"
+    description: "Run tests"
+
+  lint:
+    command: "python -m ruff check ."
+    description: "Lint code"
+
+  format:
+    command: "python -m ruff format ."
+    description: "Format code"

@@ -1,0 +1,46 @@
+image: "golang:1.22"
+workdir: "/workspace"
+
+setup:
+  packages:
+    - git
+    - make
+
+mounts:
+  - source: "."
+    target: "/workspace"
+  - source: "${HOME}/.cache/go-build"
+    target: "/root/.cache/go-build"
+  - source: "${HOME}/go/pkg/mod"
+    target: "/go/pkg/mod"
+
+env:
+  - "CGO_ENABLED=0"
+  - "GOPROXY=https://proxy.golang.org,direct"
+
+process:
+  init: true
+  kill_on_exit: true
+  grace_period: "5s"
+  cleanup_orphans: true
+
+scripts:
+  test:
+    command: "go test -race ./..."
+    description: "Run tests with race detector"
+  build:
+    command: "go build ./..."
+    description: "Build all packages"
+  lint:
+    command: "golangci-lint run"
+    description: "Run linter"
+
+dev:
+  lsp:
+    name: gopls
+    command: "gopls serve -listen=:6389"
+    port: 6389
+  dap:
+    name: delve
+    command: "dlv dap --listen=:38697 --api-version=2"
+    port: 38697

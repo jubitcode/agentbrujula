@@ -1,0 +1,37 @@
+image: "gcc:13"
+workdir: "/workspace"
+
+setup:
+  packages:
+    - make
+    - gdb
+    - valgrind
+
+mounts:
+  - source: "."
+    target: "/workspace"
+
+scripts:
+  build:
+    command: "make"
+    description: "Build the program"
+
+  run:
+    command: "./hello"
+    description: "Run the program"
+
+  debug:
+    command: "gdb ./hello"
+    description: "Debug with GDB"
+
+  memcheck:
+    command: "valgrind --leak-check=full ./hello"
+    description: "Check for memory leaks"
+
+  clean:
+    command: "make clean"
+    description: "Clean build artifacts"
+
+  all:
+    composite: [build, run]
+    description: "Build and run"

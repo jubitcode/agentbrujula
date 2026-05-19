@@ -1,0 +1,47 @@
+image: "ubuntu:22.04"
+workdir: "/workspace"
+
+setup:
+  packages:
+    - curl
+    - clang
+    - llvm
+    - git
+
+  run:
+    - |
+      if [ ! -d "/opt/odin" ]; then
+        cd /tmp && \
+        curl -L -o odin.tar.gz https://github.com/odin-lang/Odin/releases/download/dev-2024-03/odin-ubuntu-amd64-dev-2024-03.tar.gz && \
+        tar -xzf odin.tar.gz && \
+        mv odin-ubuntu-amd64-dev-2024-03 /opt/odin && \
+        rm odin.tar.gz
+      fi
+
+env:
+  - "PATH=/opt/odin:${PATH}"
+
+mounts:
+  - source: "."
+    target: "/workspace"
+
+scripts:
+  build:
+    command: "/opt/odin/odin build . -out:hello"
+    description: "Build the program"
+
+  run:
+    command: "./hello"
+    description: "Run the program"
+
+  check:
+    command: "/opt/odin/odin check ."
+    description: "Check for errors"
+
+  all:
+    composite: [build, run]
+    description: "Build and run"
+
+  clean:
+    command: "rm -f hello"
+    description: "Clean build artifacts"

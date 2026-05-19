@@ -1,0 +1,45 @@
+image: "ubuntu:22.04"
+workdir: "/workspace"
+
+setup:
+  packages:
+    - curl
+    - xz-utils
+
+  run:
+    - |
+      if [ ! -d "/opt/zig" ]; then
+        cd /tmp && \
+        curl -L -o zig.tar.xz https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz && \
+        tar -xf zig.tar.xz && \
+        mv zig-linux-x86_64-0.13.0 /opt/zig && \
+        rm zig.tar.xz
+      fi
+
+env:
+  - "PATH=/opt/zig:${PATH}"
+
+mounts:
+  - source: "."
+    target: "/workspace"
+
+scripts:
+  build:
+    command: "/opt/zig/zig build"
+    description: "Build the program"
+
+  run:
+    command: "/opt/zig/zig build run"
+    description: "Build and run"
+
+  test:
+    command: "/opt/zig/zig build test"
+    description: "Run tests"
+
+  clean:
+    command: "rm -rf zig-out .zig-cache"
+    description: "Clean build artifacts"
+
+  fmt:
+    command: "/opt/zig/zig fmt src/"
+    description: "Format source code"

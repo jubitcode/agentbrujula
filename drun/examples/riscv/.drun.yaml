@@ -1,0 +1,43 @@
+image: "ubuntu:22.04"
+workdir: "/workspace"
+
+setup:
+  packages:
+    - gcc-riscv64-linux-gnu
+    - binutils-riscv64-linux-gnu
+    - qemu-user
+    - qemu-user-static
+    - make
+
+mounts:
+  - source: "."
+    target: "/workspace"
+
+scripts:
+  assemble:
+    command: "riscv64-linux-gnu-as -o hello.o hello.s"
+    description: "Assemble RISC-V source"
+
+  link:
+    command: "riscv64-linux-gnu-ld -o hello hello.o"
+    description: "Link object file"
+
+  build:
+    composite: [assemble, link]
+    description: "Assemble and link"
+
+  execute:
+    command: "qemu-riscv64 ./hello"
+    description: "Run with QEMU emulation"
+
+  all:
+    composite: [build, execute]
+    description: "Build and run"
+
+  disasm:
+    command: "riscv64-linux-gnu-objdump -d hello"
+    description: "Disassemble binary"
+
+  clean:
+    command: "rm -f hello hello.o"
+    description: "Clean build artifacts"
