@@ -76,6 +76,32 @@ Services that speak A2A:
 
 The protocol carries a `contextId` so multi-step conversations within one hire share the same conversation thread. Streaming uses SSE; one-shot calls use plain JSON-RPC request/response.
 
+## Contracts
+
+The marketplace runs on three Soroban contracts.
+
+**`tool-registry`** is the public agent directory. Each agent registers a handle, public key, capability tags, per-call rate, and a reputation balance. The orchestrator reads it to satisfy `/api/discover` (which agents match a task and budget) and to verify ownership before sensitive operations like `update_tool` or `deactivate_tool`. The same contract also records task claims so the on-chain history shows which agent took which task and whether it resolved as success or failure. Reputation is denominated in a separate `REP` Stellar asset; the contract just reads the balance, so the rep system is upgradeable independently.
+
+**`usdc-escrow`** holds the user's USDC per task. `create_escrow` locks a payment under a task ID with a deadline; thereafter exactly one of four terminal calls fires. `release_to_agent` pays the agent the full locked amount when the hire ran cleanly. `refund_to_client` returns it to the user after the deadline or when the work fails compliance. `settle` pays the agent a partial amount and refunds the remainder (used when the actual cost was below the budget ceiling). `settle_team` does the same as one atomic split across multiple agents (used by `/api/hire-team`). All transitions follow checks-effects-interactions ordering so a reentrant token contract cannot double-spend. An optional pause switch lets the owner halt new escrows during incidents without affecting in-flight ones.
+
+**`compression-compliance`** is the quality gate. After execution, the orchestrator calls `verify_compression(task_id, input_tokens, output_tokens, max_ratio_pct)`. The contract attests on-chain whether the agent's output stayed within the allowed input-to-output ratio and returns true or false. The orchestrator uses that result to decide between `release_to_agent` and `refund_to_client`. Attestations are append-only so anyone can replay the chain to verify any past settlement was justified.
+
+The three contracts are deployed once and treated as immutable. Upgrades happen by deploying new contract IDs and rolling clients over; there is no upgrade proxy.
+
+## Hebbian memory
+
+The research agent maintains a knowledge graph that learns from agent outputs and shapes future agent selection. Nodes represent capabilities, agents, and facts extracted from past task results. Edges record co-activation weights that strengthen when an agent succeeds at a related task and decay otherwise.
+
+Weight updates use synapse-wise sigmoidal growth (SNAP). Each edge is bounded in `[0, 1]`, with the steepest plasticity in the mid-range, so noisy late-cycle reinforcements cannot keep piling on top of an already-saturated edge. A spaced-repetition bonus amplifies updates to edges that have been quiet for a while, modeling the memory-strengthening effect of revisiting a topic after a gap. A periodic homeostatic renormalization (the "sleep" cycle) pulls all weights toward a low target with heterogeneous decay, preserving recently-successful edges while letting noise erode.
+
+A retrieval gate fronts the graph. For a new task it combines three signals: TF-IDF similarity over node content, Hebbian-neighborhood expansion from currently-active nodes, and a small exploration set drawn from underused nodes to prevent the active set from collapsing into a single cluster. The result is a bounded list of relevant past context the orchestrator can fold into the agent prompt.
+
+An introspection engine reads the graph topology to compute a self-model: proficiency per knowledge domain, frontier topics where the graph is sparse, and a confidence calibration score from edge-weight statistics. A personality synthesizer turns that self-model into a natural-language paragraph the orchestrator injects as a system-prompt prefix, giving the agent a self-aware framing of what it knows well versus what it is exploring.
+
+The bridge layer (`agent/src/research_agent/hebbian_bridge.py`) exposes four functions to the rest of the system. `query_hebbian(capabilities)` returns a recommended agent handle plus a confidence score, consumed by `/api/discover` to rank candidates. `reinforce_hebbian(capability, handle)` strengthens the capability-to-agent edge after a compliant completion. `store_output(task, handle, output, capabilities)` ingests the agent's response, extracts facts via the LLM, and creates new nodes. `get_personality_prompt()` returns the synthesizer's output for the next system prompt.
+
+Graph state persists in PostgreSQL (or SQLite for local dev) sharing the same `DATABASE_URL` as the task store. The schema migrates forward automatically; an embedding-dimension mismatch on startup raises rather than silently producing nonsense vectors.
+
 ## Local development
 
 Prerequisites:
