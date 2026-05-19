@@ -1,0 +1,31 @@
+apiVersion: mcp-meta/v1
+kind: AgentPod
+metadata:
+  name: research-agent
+  description: "Deep web research agent with Hebbian memory"
+spec:
+  command: ["sh", "-c", "P=${VIRTUAL_ENV:-x}/bin/python3; [ -x $P ] || P=../agent/.venv/bin/python3; [ -x $P ] || P=/app/agent/.venv/bin/python3; [ -x $P ] || P=python3; exec $P pods/research-agent/main.py"]
+  callTimeout: 60s
+  shutdownTimeout: 5s
+  tools:
+    - name: research
+      description: "Research a topic using web search + Hebbian knowledge"
+    - name: ping
+      description: "Health check"
+  agentCard:
+    name: "Research Agent"
+    description: "Deep web research with knowledge accumulation via Hebbian memory"
+    version: "1.0.0"
+    provider:
+      organization: "MCP-Meta"
+    capabilities:
+      streaming: false
+    defaultInputModes: ["text"]
+    defaultOutputModes: ["text"]
+  skills:
+    - id: "deep-research"
+      name: "Deep Research"
+      description: "Research a topic in depth using web search, prior knowledge, and LLM synthesis"
+      tags: ["research", "web", "knowledge"]
+      examples: ["Research WebAssembly", "What is the current state of Rust adoption?"]
+      mapToTools: [research]

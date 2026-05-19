@@ -1,0 +1,30 @@
+apiVersion: mcp-meta/v1
+kind: AgentPod
+metadata:
+  name: reviewer
+  description: "Reviewer agent powered by LLM"
+spec:
+  command: ["go", "run", "./test/agents/reviewer/main.go"]
+  callTimeout: 30s
+  shutdownTimeout: 5s
+  tools:
+    - name: review
+      description: "Rate and critique text"
+    - name: ping
+      description: "Health check"
+  agentCard:
+    name: "Reviewer Agent"
+    description: "Rates and critiques text using an LLM"
+    version: "1.0.0"
+    provider:
+      organization: "MCP-Meta"
+    capabilities:
+      streaming: false
+    defaultInputModes: ["text"]
+    defaultOutputModes: ["text"]
+  skills:
+    - id: "review"
+      name: "Review"
+      description: "Rate and critique text"
+      tags: ["nlp", "review"]
+      mapToTools: [review]

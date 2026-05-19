@@ -1,0 +1,125 @@
+apiVersion: mcp-meta/v1
+kind: ToolPod
+
+metadata:
+  name: http-tools
+  description: "HTTP client with MCP server testing capabilities"
+  labels:
+    category: networking
+    language: go
+
+spec:
+  runtime: native
+  command: ["./httpcli-pod"]
+  workdir: ./pods/httpcli
+  callTimeout: 60s
+
+  tools:
+    - name: http_get
+      description: "Execute HTTP GET request"
+      timeout: 30s
+      inputSchema:
+        type: object
+        required: [url]
+        properties:
+          url:
+            type: string
+            description: "Target URL"
+          headers:
+            type: object
+            description: "Request headers as key-value pairs"
+            additionalProperties:
+              type: string
+          timeout:
+            type: integer
+            description: "Request timeout in seconds"
+            default: 30
+          allow_internal:
+            type: boolean
+            description: "Allow internal/localhost URLs (default: false for security)"
+            default: false
+
+    - name: http_post
+      description: "Execute HTTP POST request"
+      timeout: 30s
+      inputSchema:
+        type: object
+        required: [url]
+        properties:
+          url:
+            type: string
+          body:
+            type: string
+            description: "Request body (JSON or raw)"
+          content_type:
+            type: string
+            default: "application/json"
+          headers:
+            type: object
+            additionalProperties:
+              type: string
+          timeout:
+            type: integer
+            default: 30
+          allow_internal:
+            type: boolean
+            default: false
+
+    - name: execute_http_file
+      description: "Execute requests from .http file"
+      timeout: 120s
+      inputSchema:
+        type: object
+        required: [file_path]
+        properties:
+          file_path:
+            type: string
+            description: "Path to .http file"
+          variables:
+            type: object
+            description: "Variable substitutions"
+            additionalProperties:
+              type: string
+          request_name:
+            type: string
+            description: "Specific request to execute (optional)"
+
+    - name: test_mcp_server
+      description: "Test MCP server using .mcp test file"
+      timeout: 180s
+      inputSchema:
+        type: object
+        required: [test_file]
+        properties:
+          test_file:
+            type: string
+            description: "Path to .mcp test file"
+          transport:
+            type: string
+            enum: [sse, stdio]
+            default: stdio
+          server_url:
+            type: string
+            description: "MCP server URL (for SSE)"
+          server_command:
+            type: string
+            description: "MCP server command (for stdio)"
+
+    - name: benchmark
+      description: "Benchmark HTTP endpoint"
+      timeout: 300s
+      inputSchema:
+        type: object
+        required: [url]
+        properties:
+          url:
+            type: string
+          requests:
+            type: integer
+            minimum: 1
+            maximum: 10000
+            default: 100
+          concurrency:
+            type: integer
+            default: 10
+            maximum: 100

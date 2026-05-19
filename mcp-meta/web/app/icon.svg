@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <title>Brújula</title>
+
+  <!-- Outer ring -->
+  <circle cx="32" cy="32" r="28" fill="#0a0a0a" stroke="#222222" stroke-width="2"/>
+  <circle cx="32" cy="32" r="24" fill="none" stroke="#2a2a2a" stroke-width="1"/>
+
+  <!-- Cardinal tick marks (N E S W) -->
+  <line x1="32" y1="6"  x2="32" y2="11" stroke="#888888" stroke-width="2"/>
+  <line x1="58" y1="32" x2="53" y2="32" stroke="#444444" stroke-width="1.5"/>
+  <line x1="32" y1="58" x2="32" y2="53" stroke="#444444" stroke-width="1.5"/>
+  <line x1="6"  y1="32" x2="11" y2="32" stroke="#444444" stroke-width="1.5"/>
+
+  <!-- Compass needle: top half accent blue, bottom half muted -->
+  <polygon points="32,12 26,32 38,32" fill="#3b82f6"/>
+  <polygon points="32,52 26,32 38,32" fill="#5a5a5a"/>
+
+  <!-- Center pin -->
+  <circle cx="32" cy="32" r="3" fill="#0a0a0a" stroke="#3b82f6" stroke-width="1.5"/>
+
+  <!-- "N" label above the needle -->
+  <text x="32" y="5"
+        font-family="-apple-system, BlinkMacSystemFont, sans-serif"
+        font-size="6"
+        font-weight="700"
+        text-anchor="middle"
+        fill="#3b82f6">N</text>
+</svg>

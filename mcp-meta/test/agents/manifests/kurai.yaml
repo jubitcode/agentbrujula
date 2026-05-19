@@ -1,0 +1,75 @@
+apiVersion: mcp-meta/v1
+kind: ToolPod
+
+metadata:
+  name: kurai
+  description: "Web search, image search, and news via Kurai re-ranking engine"
+  labels:
+    category: search
+    language: python
+
+spec:
+  runtime: native
+  command: ["sh", "-c", "P=${VIRTUAL_ENV:-x}/bin/python3; [ -x $P ] || P=../agent/.venv/bin/python3; [ -x $P ] || P=/app/agent/.venv/bin/python3; [ -x $P ] || P=python3; exec $P pods/kurai/main.py"]
+  env:
+    KURAI_URL: http://localhost:8080
+  callTimeout: 30s
+
+  tools:
+    - name: web_search
+      description: "Search the web with intelligent re-ranking and ad filtering"
+      inputSchema:
+        type: object
+        required: [query]
+        properties:
+          query:
+            type: string
+            description: "Search query"
+          page:
+            type: integer
+            description: "Page number (default 1)"
+          category:
+            type: string
+            enum: [general, tech, academic, news]
+            description: "Query category hint (auto-detected if omitted)"
+
+    - name: image_search
+      description: "Search for images with quality and relevance ranking"
+      inputSchema:
+        type: object
+        required: [query]
+        properties:
+          query:
+            type: string
+            description: "Search query"
+          safesearch:
+            type: integer
+            enum: [0, 1, 2]
+            description: "0=off, 1=moderate, 2=strict (default 1)"
+          size:
+            type: string
+            enum: [small, medium, large]
+            description: "Image size filter"
+
+    - name: news_search
+      description: "Search news with story clustering and source credibility"
+      inputSchema:
+        type: object
+        required: [query]
+        properties:
+          query:
+            type: string
+            description: "Search query"
+          time_range:
+            type: string
+            enum: [day, week, month, year]
+            description: "Time range filter"
+          cluster:
+            type: boolean
+            description: "Group related stories (default true)"
+
+    - name: trending_news
+      description: "Get current trending news stories"
+      inputSchema:
+        type: object
+        properties: {}

@@ -1,0 +1,26 @@
+{
+  "name": "Brújula",
+  "short_name": "Brújula",
+  "description": "Hire AI agents you only pay when they ship. Built on Stellar.",
+  "start_url": "/hire",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "lang": "en",
+  "categories": ["productivity", "developer-tools", "finance"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "/apple-icon",
+      "type": "image/png",
+      "sizes": "180x180",
+      "purpose": "any maskable"
+    }
+  ]
+}

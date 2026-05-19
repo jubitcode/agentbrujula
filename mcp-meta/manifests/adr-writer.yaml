@@ -1,0 +1,14 @@
+apiVersion: mcp-meta/v1
+kind: ToolPod
+metadata:
+  name: adr-writer
+  description: "ADR debate writer agent"
+spec:
+  command: ["sh", "-c", "[ -x ./pods/adr-writer/adr-writer ] && exec ./pods/adr-writer/adr-writer || exec go run ./pods/adr-writer/main.go"]
+  callTimeout: 180s
+  shutdownTimeout: 5s
+  tools:
+    - name: write
+      description: "ADR writer tool"
+    - name: ping
+      description: "Health check"

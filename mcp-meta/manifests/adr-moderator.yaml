@@ -1,0 +1,34 @@
+apiVersion: mcp-meta/v1
+kind: AgentPod
+metadata:
+  name: adr-moderator
+  description: "Multi-agent ADR debate orchestrator"
+spec:
+  command: ["sh", "-c", "[ -x ./pods/adr-moderator/adr-moderator ] && exec ./pods/adr-moderator/adr-moderator || exec go run ./pods/adr-moderator/main.go"]
+  callTimeout: 600s
+  shutdownTimeout: 5s
+  tools:
+    - name: debate
+      description: "Run a multi-agent architecture debate and produce an ADR"
+    - name: ping
+      description: "Health check"
+  agentCard:
+    name: "ADR Simulator"
+    description: "Multi-agent architecture decision debate with genuine agent independence"
+    version: "1.0.0"
+    provider:
+      organization: "MCP-Meta"
+    capabilities:
+      streaming: false
+    defaultInputModes: ["text"]
+    defaultOutputModes: ["text"]
+  skills:
+    - id: "adr-debate"
+      name: "Architecture Debate"
+      description: "Run a multi-agent debate on an architecture decision and produce an ADR document"
+      tags: ["architecture", "debate", "adr", "decision", "engineering"]
+      examples:
+        - "Should we use PostgreSQL or MongoDB for user profiles?"
+        - "WebSockets or SSE for notifications?"
+        - "Build custom auth or use Auth0?"
+      mapToTools: [debate]

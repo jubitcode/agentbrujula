@@ -1,0 +1,48 @@
+apiVersion: mcp-meta/v1
+kind: ToolPod
+metadata:
+  name: tool-registry
+  description: "Soroban tool registry - read-only contract queries"
+  labels:
+    category: blockchain
+    network: stellar-testnet
+spec:
+  runtimeBackend: soroban
+  env:
+    STELLAR_RPC_URL: "${STELLAR_RPC_URL}"
+    TOOL_REGISTRY_CONTRACT_ID: "${TOOL_REGISTRY_CONTRACT_ID}"
+  tools:
+    - name: list_active
+      description: "List all active tool handles from the Soroban registry"
+      inputSchema:
+        type: object
+        properties: {}
+        additionalProperties: false
+    - name: get_tool
+      description: "Get full tool entry by handle"
+      inputSchema:
+        type: object
+        required:
+          - handle
+        properties:
+          handle:
+            type: string
+            description: "Tool handle to look up"
+        additionalProperties: false
+    - name: list_active_full
+      description: "List all active tools with full details"
+      inputSchema:
+        type: object
+        properties: {}
+        additionalProperties: false
+    - name: get_rep
+      description: "Get REP token balance for an agent address"
+      inputSchema:
+        type: object
+        required:
+          - agent
+        properties:
+          agent:
+            type: string
+            description: "Stellar address of the agent"
+        additionalProperties: false

@@ -1,0 +1,30 @@
+apiVersion: mcp-meta/v1
+kind: AgentPod
+metadata:
+  name: summarizer
+  description: "Summarizer agent powered by LLM"
+spec:
+  command: ["go", "run", "./test/agents/summarizer/main.go"]
+  callTimeout: 30s
+  shutdownTimeout: 5s
+  tools:
+    - name: summarize
+      description: "Summarize text in one sentence"
+    - name: ping
+      description: "Health check"
+  agentCard:
+    name: "Summarizer Agent"
+    description: "Summarizes text into one sentence using an LLM"
+    version: "1.0.0"
+    provider:
+      organization: "MCP-Meta"
+    capabilities:
+      streaming: false
+    defaultInputModes: ["text"]
+    defaultOutputModes: ["text"]
+  skills:
+    - id: "summarize"
+      name: "Summarize"
+      description: "Summarize text into one sentence"
+      tags: ["nlp", "summarization"]
+      mapToTools: [summarize]

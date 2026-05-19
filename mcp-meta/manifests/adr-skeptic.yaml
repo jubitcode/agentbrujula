@@ -1,0 +1,14 @@
+apiVersion: mcp-meta/v1
+kind: ToolPod
+metadata:
+  name: adr-skeptic
+  description: "ADR debate skeptic agent"
+spec:
+  command: ["sh", "-c", "[ -x ./pods/adr-skeptic/adr-skeptic ] && exec ./pods/adr-skeptic/adr-skeptic || exec go run ./pods/adr-skeptic/main.go"]
+  callTimeout: 180s
+  shutdownTimeout: 5s
+  tools:
+    - name: challenge
+      description: "ADR skeptic tool"
+    - name: ping
+      description: "Health check"

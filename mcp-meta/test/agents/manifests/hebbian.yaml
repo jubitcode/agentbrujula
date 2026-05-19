@@ -1,0 +1,45 @@
+apiVersion: mcp-meta/v1
+kind: AgentPod
+metadata:
+  name: hebbian
+  description: "Global Hebbian knowledge graph service"
+spec:
+  command: ["sh", "-c", "P=${VIRTUAL_ENV:-x}/bin/python3; [ -x $P ] || P=../agent/.venv/bin/python3; [ -x $P ] || P=/app/agent/.venv/bin/python3; [ -x $P ] || P=python3; exec $P pods/hebbian/main.py"]
+  callTimeout: 30s
+  shutdownTimeout: 5s
+  tools:
+    - name: search
+      description: "Retrieve knowledge using TF-IDF + Hebbian boost"
+    - name: ingest
+      description: "Extract facts from Q&A, strengthen Hebbian edges"
+    - name: store_finding
+      description: "Store an explicit finding as a knowledge node"
+    - name: decay_and_prune
+      description: "Decay unused edges, prune weak connections"
+    - name: graph
+      description: "Get full graph structure for visualization"
+    - name: ping
+      description: "Health check"
+  agentCard:
+    name: "Hebbian Knowledge Service"
+    description: "Global knowledge graph with Hebbian learning for multi-agent shared memory"
+    version: "1.0.0"
+    provider:
+      organization: "MCP-Meta"
+    capabilities:
+      streaming: false
+      pushNotifications: false
+    defaultInputModes: ["text"]
+    defaultOutputModes: ["text"]
+  skills:
+    - id: "knowledge-search"
+      name: "Knowledge Search"
+      description: "Search the global knowledge graph using TF-IDF + Hebbian boost"
+      tags: ["knowledge", "memory", "search"]
+      examples: ["What do we know about Rust?", "Search knowledge about consensus"]
+      mapToTools: [search]
+    - id: "knowledge-ingest"
+      name: "Knowledge Ingest"
+      description: "Ingest new facts from Q&A into the knowledge graph"
+      tags: ["knowledge", "memory", "learn"]
+      mapToTools: [ingest]

@@ -1,0 +1,14 @@
+apiVersion: mcp-meta/v1
+kind: ToolPod
+metadata:
+  name: search
+  description: "Smart search with embedding-based quality gate and Tavily fallback"
+spec:
+  command: ["sh", "-c", "P=${VIRTUAL_ENV:-x}/bin/python3; [ -x $P ] || P=../agent/.venv/bin/python3; [ -x $P ] || P=/app/agent/.venv/bin/python3; [ -x $P ] || P=python3; exec $P pods/search-supervisor/main.py"]
+  callTimeout: 30s
+  shutdownTimeout: 5s
+  tools:
+    - name: smart_search
+      description: "Search with automatic quality validation and fallback to Tavily"
+    - name: ping
+      description: "Health check"

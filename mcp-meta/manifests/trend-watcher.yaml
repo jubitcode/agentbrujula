@@ -1,0 +1,31 @@
+apiVersion: mcp-meta/v1
+kind: AgentPod
+metadata:
+  name: trend-watcher
+  description: "Trend monitoring and analysis agent"
+spec:
+  command: ["sh", "-c", "P=${VIRTUAL_ENV:-x}/bin/python3; [ -x $P ] || P=../agent/.venv/bin/python3; [ -x $P ] || P=/app/agent/.venv/bin/python3; [ -x $P ] || P=python3; exec $P pods/trend-watcher/main.py"]
+  callTimeout: 60s
+  shutdownTimeout: 5s
+  tools:
+    - name: watch
+      description: "Monitor and analyze trends with historical comparison"
+    - name: ping
+      description: "Health check"
+  agentCard:
+    name: "Trend Watcher Agent"
+    description: "Monitors trends via news, identifies patterns, tracks over time via Hebbian"
+    version: "1.0.0"
+    provider:
+      organization: "MCP-Meta"
+    capabilities:
+      streaming: false
+    defaultInputModes: ["text"]
+    defaultOutputModes: ["text"]
+  skills:
+    - id: "trend-watch"
+      name: "Trend Watch"
+      description: "Monitor trends in news, identify patterns, compare with historical knowledge"
+      tags: ["trends", "news", "monitoring"]
+      examples: ["What are the trending topics in AI?", "Track trends in cloud computing"]
+      mapToTools: [watch]

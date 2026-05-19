@@ -1,0 +1,14 @@
+apiVersion: mcp-meta/v1
+kind: ToolPod
+metadata:
+  name: adr-decision-maker
+  description: "ADR debate decision-maker agent"
+spec:
+  command: ["go", "run", "./pods/adr-decision-maker/main.go"]
+  callTimeout: 45s
+  shutdownTimeout: 5s
+  tools:
+    - name: decide
+      description: "ADR decision-maker tool"
+    - name: ping
+      description: "Health check"

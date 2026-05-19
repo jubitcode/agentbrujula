@@ -1,0 +1,14 @@
+apiVersion: mcp-meta/v1
+kind: ToolPod
+metadata:
+  name: adr-advocate
+  description: "ADR debate advocate agent"
+spec:
+  command: ["sh", "-c", "[ -x ./pods/adr-advocate/adr-advocate ] && exec ./pods/adr-advocate/adr-advocate || exec go run ./pods/adr-advocate/main.go"]
+  callTimeout: 180s
+  shutdownTimeout: 5s
+  tools:
+    - name: argue
+      description: "ADR advocate tool"
+    - name: ping
+      description: "Health check"

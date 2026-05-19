@@ -1,0 +1,31 @@
+apiVersion: mcp-meta/v1
+kind: AgentPod
+metadata:
+  name: competitive-intel
+  description: "Competitive intelligence gathering agent"
+spec:
+  command: ["sh", "-c", "P=${VIRTUAL_ENV:-x}/bin/python3; [ -x $P ] || P=../agent/.venv/bin/python3; [ -x $P ] || P=/app/agent/.venv/bin/python3; [ -x $P ] || P=python3; exec $P pods/competitive-intel/main.py"]
+  callTimeout: 60s
+  shutdownTimeout: 5s
+  tools:
+    - name: intel
+      description: "Gather competitive intelligence on a company or product"
+    - name: ping
+      description: "Health check"
+  agentCard:
+    name: "Competitive Intel Agent"
+    description: "Gathers and tracks competitive intelligence with Hebbian memory"
+    version: "1.0.0"
+    provider:
+      organization: "MCP-Meta"
+    capabilities:
+      streaming: false
+    defaultInputModes: ["text"]
+    defaultOutputModes: ["text"]
+  skills:
+    - id: "competitive-intel"
+      name: "Competitive Intelligence"
+      description: "Gather competitive intelligence on a company or product from web + news + memory"
+      tags: ["competitive", "intelligence", "business"]
+      examples: ["Gather intel on Vercel", "What is Supabase doing lately?"]
+      mapToTools: [intel]

@@ -1,0 +1,31 @@
+apiVersion: mcp-meta/v1
+kind: AgentPod
+metadata:
+  name: content-writer
+  description: "Content writing agent with research capabilities"
+spec:
+  command: ["sh", "-c", "P=${VIRTUAL_ENV:-x}/bin/python3; [ -x $P ] || P=../agent/.venv/bin/python3; [ -x $P ] || P=/app/agent/.venv/bin/python3; [ -x $P ] || P=python3; exec $P pods/content-writer/main.py"]
+  callTimeout: 90s
+  shutdownTimeout: 5s
+  tools:
+    - name: write
+      description: "Research and write content (article, blog post, report)"
+    - name: ping
+      description: "Health check"
+  agentCard:
+    name: "Content Writer Agent"
+    description: "Researches topics and writes structured content with Hebbian memory"
+    version: "1.0.0"
+    provider:
+      organization: "MCP-Meta"
+    capabilities:
+      streaming: false
+    defaultInputModes: ["text"]
+    defaultOutputModes: ["text"]
+  skills:
+    - id: "content-write"
+      name: "Content Writing"
+      description: "Research a topic and write a blog post, article, or report"
+      tags: ["writing", "content", "blog"]
+      examples: ["Write a blog post about Rust vs Go", "Write a technical report on WebAssembly"]
+      mapToTools: [write]
