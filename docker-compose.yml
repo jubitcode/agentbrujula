@@ -1,0 +1,97 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: agent_web3
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev-password}
+      POSTGRES_DB: marketplace
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent_web3"]
+      interval: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-dev-redis-password}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-dev-redis-password}
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep -q PONG"]
+      interval: 5s
+      retries: 5
+
+  mcp-meta:
+    build:
+      context: .
+      dockerfile: mcp-meta/Dockerfile
+    environment:
+      AUTH_ENABLED: "true"
+      AUTH_FREE_KEY: ${AUTH_FREE_KEY:-mcp-dev-key}
+      AUTH_PAID_KEY: ${AUTH_PAID_KEY:-mcp-dev-key}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      EMBEDDING_URL: ${EMBEDDING_URL:-https://openrouter.ai/api/v1}
+    ports:
+      - "127.0.0.1:9876:9876"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9876/health"]
+      interval: 10s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://agent_web3:${POSTGRES_PASSWORD:-dev-password}@postgres:5432/marketplace
+      MCP_META_URL: http://mcp-meta:9876
+      AUTH_FREE_KEY: ${AUTH_FREE_KEY:-mcp-dev-key}
+      STELLAR_NETWORK: ${STELLAR_NETWORK:-testnet}
+      STELLAR_RPC_URL: ${STELLAR_RPC_URL:-https://soroban-testnet.stellar.org}
+      STELLAR_HORIZON_URL: ${STELLAR_HORIZON_URL:-https://horizon-testnet.stellar.org}
+      X402_ENABLED: ${X402_ENABLED:-true}
+      X402_FACILITATOR_URL: ${X402_FACILITATOR_URL:-https://x402.org/facilitator}
+      X402_NETWORK: ${X402_NETWORK:-stellar:testnet}
+      X402_USDC_ADDRESS: ${X402_USDC_ADDRESS:-CDUQPQI6SCMDBWK4ZKBMJGMGSJHHO5ARKDW45M7GJSEFNC44RUPD2WJQ}
+      X402_ESCROW_CONTRACT: ${X402_ESCROW_CONTRACT:-CAMPNA3TNE23UYM5WSTXHQWA5HGU7HL6M2T64R5VNQT5PJS6UBIXOCCO}
+      TOOL_REGISTRY_CONTRACT_ID: ${TOOL_REGISTRY_CONTRACT_ID:-CARJRAXMYOM7TNNCR2K4OVZTO6BYUTUIW5AB2ZHDSF5UZXBSWU7YZQBW}
+      ORCHESTRATOR_SECRET_KEY: ${ORCHESTRATOR_SECRET_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      SESSION_TOKEN_SECRET: ${SESSION_TOKEN_SECRET:-local-dev-session-secret-do-not-use-in-prod-32chars-min}
+      AZURE_FDID: ${AZURE_FDID:-}
+    ports:
+      - "5050:5050"
+    depends_on:
+      mcp-meta:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./mcp-meta/web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:9876}
+        NEXT_PUBLIC_MARKETPLACE_URL: ${NEXT_PUBLIC_MARKETPLACE_URL:-http://localhost:5050}
+        NEXT_PUBLIC_STELLAR_NETWORK: ${NEXT_PUBLIC_STELLAR_NETWORK:-TESTNET}
+        NEXT_PUBLIC_HORIZON_URL: ${NEXT_PUBLIC_HORIZON_URL:-https://horizon-testnet.stellar.org}
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://mcp-meta:9876}
+      NEXT_PUBLIC_MARKETPLACE_URL: ${NEXT_PUBLIC_MARKETPLACE_URL:-http://api:5050}
+    ports:
+      - "3002:3002"
+    depends_on:
+      - api
+      - mcp-meta
+
+volumes:
+  pgdata:

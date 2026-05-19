@@ -1,0 +1,74 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+*.egg
+.pytest_cache/
+
+# Rust / Soroban
+contracts/*/target/
+target/
+
+# Go
+mcp-meta/mcp-meta
+mcp-meta/bin/
+mcp-meta/pods/adr-*/adr-*
+mcp-meta/pods/brewinfo/brewinfo
+mcp-meta/pods/competitive-intel/competitive-intel
+mcp-meta/pods/content-writer/content-writer
+mcp-meta/pods/drun/drun
+mcp-meta/pods/httpcli/httpcli
+mcp-meta/pods/httpcli/httpcli-pod
+mcp-meta/pods/trend-watcher/trend-watcher
+mcp-meta/reviewer
+mcp-meta/summarizer
+drun/bin/
+drun/drun
+*.out
+
+# Node / TypeScript
+node_modules/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+**/.env
+**/.env.local
+*.pem
+.azure-credentials.local
+scripts/v4_agent_keys.json
+scripts/*_keys.json
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform/*.tfvars
+!terraform/terraform.tfvars.example
+crash.log
+crash.*.log
+
+# Documentation — only the top-level README.md is tracked. Inner READMEs,
+# audit/ + docs/ contents, contracts/DEPLOYMENTS.md, etc., stay local.
+*.md
+!/README.md
+
+# Full directory excludes — entire audit/ + docs/ trees stay local
+# (covers non-markdown files too, e.g. images, drafts, sub-runbooks)
+audit/
+docs/
+**/docs/
