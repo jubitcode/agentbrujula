@@ -11,21 +11,31 @@ _SECRET_ENV = "SESSION_TOKEN_SECRET"
 _DEFAULT_TTL_SECONDS = int(os.environ.get("SESSION_TOKEN_TTL_SECONDS", "3600"))
 _ALGORITHM = "HS256"
 
-# Known-public secrets (committed to docker-compose.yml / .env.example).
-# Any deploy using one of these can have JWTs forged by anyone with repo
-# access. Refuse to start with one of these unless STELLAR_NETWORK=testnet.
 _KNOWN_WEAK_SECRETS = frozenset({
     "local-dev-session-secret-do-not-use-in-prod-32chars-min",
     "dev-session-secret-do-not-use-in-prod",
 })
 
+_TESTNET_USDC_SAC = "CDUQPQI6SCMDBWK4ZKBMJGMGSJHHO5ARKDW45M7GJSEFNC44RUPD2WJQ"
+
+
+def _looks_like_testnet() -> bool:
+    network = os.environ.get("STELLAR_NETWORK", "testnet").strip().lower()
+    if network != "testnet":
+        return False
+    horizon = os.environ.get("STELLAR_HORIZON_URL", "").lower()
+    if horizon and "testnet" not in horizon:
+        return False
+    rpc = os.environ.get("STELLAR_RPC_URL", "").lower()
+    if rpc and "testnet" not in rpc:
+        return False
+    usdc = os.environ.get("X402_USDC_ADDRESS", "").strip()
+    if usdc and usdc != _TESTNET_USDC_SAC:
+        return False
+    return True
+
 
 def _load_secret() -> str:
-    """Read the HMAC secret from env or generate ephemeral.
-
-    On non-testnet networks, refuses to start with a known-public default.
-    Production always provides the secret via Key Vault injection.
-    """
     secret = os.environ.get(_SECRET_ENV, "").strip()
     if not secret:
         secret = secrets.token_hex(32)
@@ -33,12 +43,12 @@ def _load_secret() -> str:
         raise RuntimeError(
             f"{_SECRET_ENV} must be at least 32 chars (got {len(secret)})"
         )
-    network = os.environ.get("STELLAR_NETWORK", "testnet").strip().lower()
-    if secret in _KNOWN_WEAK_SECRETS and network != "testnet":
+    if secret in _KNOWN_WEAK_SECRETS and not _looks_like_testnet():
         raise RuntimeError(
-            f"{_SECRET_ENV} is set to a known-public default value while "
-            f"STELLAR_NETWORK={network!r}. Rotate the secret before deploying "
-            f"to a non-testnet environment."
+            f"{_SECRET_ENV} is a known-public default but the environment "
+            f"does not consistently look like testnet "
+            f"(STELLAR_NETWORK, STELLAR_HORIZON_URL, STELLAR_RPC_URL, "
+            f"X402_USDC_ADDRESS). Rotate the secret."
         )
     return secret
 

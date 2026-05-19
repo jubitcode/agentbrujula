@@ -968,8 +968,8 @@ def discover(req: DiscoverRequest, request: Request = None):
 
     return {
         "agents": agents,
-        "registry_contract": "CDUVGH57EG3FYJJSSH4DRHUO6YDO6FA25GUTQPVAADMSLYIYLD4PDO4X",
-        "rep_contract": "CDJCWXFHMO3QSZJNP6ZPQKOB4Z6EC6R5SBOOBJ5ULIWPW4FYD4N2KTVY",
+        "registry_contract": os.environ.get("TOOL_REGISTRY_CONTRACT_ID", ""),
+        "rep_contract": os.environ.get("REP_ASSET_CONTRACT", ""),
         "hebbian_nodes": len(knowledge.graph.nodes) if knowledge else 0,
     }
 

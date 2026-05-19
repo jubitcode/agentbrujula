@@ -32,15 +32,15 @@ case "${1:-}" in
     echo "Starting mcp-meta on :9876..."
     \
       LLM_BASE_URL="${LLM_BASE_URL:-http://localhost:1234/v1}" \
-      AUTH_ENABLED="${AUTH_ENABLED:-false}" \
-      AUTH_FREE_KEY="${AUTH_FREE_KEY:-mcp-dev-key}" \
-      AUTH_PAID_KEY="${AUTH_PAID_KEY:-mcp-dev-key}" \
+      AUTH_ENABLED="${AUTH_ENABLED:-true}" \
+      AUTH_FREE_KEY="${AUTH_FREE_KEY:?AUTH_FREE_KEY must be set}" \
+      AUTH_PAID_KEY="${AUTH_PAID_KEY:?AUTH_PAID_KEY must be set}" \
       KEYCLOAK_URL="${KEYCLOAK_URL:-http://localhost:8180}" \
       KEYCLOAK_REALM="${KEYCLOAK_REALM:-mcp-meta}" \
       KEYCLOAK_CLIENT_ID="${KEYCLOAK_CLIENT_ID:-mcp-meta-web}" \
       LLM_BASE_URL=https://openrouter.ai/api/v1  \
       LLM_MODEL=deepseek/deepseek-chat \
-      DATABASE_URL="postgresql://agent_web3:dev-password@localhost:5432/marketplace" \
+      DATABASE_URL="postgresql://agent_web3:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@localhost:5432/marketplace" \
       go run ./cmd/mcp-meta/ --manifests ./manifests --transport api --host 0.0.0.0 --port 9876
       # ./mcp-meta --manifests ./manifests --transport api --host 0.0.0.0 --port 9876
     ;;
@@ -55,8 +55,8 @@ case "${1:-}" in
     cd mcp-meta && \
       LLM_BASE_URL="${LLM_BASE_URL:-http://localhost:1234/v1}" \
       AUTH_ENABLED="${AUTH_ENABLED:-true}" \
-      AUTH_FREE_KEY="${AUTH_FREE_KEY:-mcp-dev-key}" \
-      AUTH_PAID_KEY="${AUTH_PAID_KEY:-mcp-dev-key}" \
+      AUTH_FREE_KEY="${AUTH_FREE_KEY:?AUTH_FREE_KEY must be set}" \
+      AUTH_PAID_KEY="${AUTH_PAID_KEY:?AUTH_PAID_KEY must be set}" \
       KEYCLOAK_URL="${KEYCLOAK_URL:-http://localhost:8180}" \
       KEYCLOAK_REALM="${KEYCLOAK_REALM:-mcp-meta}" \
       KEYCLOAK_CLIENT_ID="${KEYCLOAK_CLIENT_ID:-mcp-meta-web}" \

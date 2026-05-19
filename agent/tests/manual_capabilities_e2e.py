@@ -12,6 +12,7 @@ Run:
 """
 
 import json
+import os
 import sys
 import time
 import urllib.request
@@ -19,7 +20,9 @@ import urllib.request
 
 FASTAPI = "http://localhost:5050"
 MCP_META = "http://localhost:9876"
-MCP_API_KEY = "mcp-dev-key"
+MCP_API_KEY = os.environ.get("AUTH_FREE_KEY") or sys.exit(
+    "AUTH_FREE_KEY env var required"
+)
 
 # The four capabilities the UI now exposes. Each must:
 #   - find at least one agent via /api/discover

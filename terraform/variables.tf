@@ -105,8 +105,13 @@ variable "mcp_meta_image_tag" {
 
 variable "keyvault_allowed_ip_ranges" {
   type        = list(string)
-  description = "Operator IP CIDRs allowed to hit Key Vault (e.g. ['198.51.100.5/32']). Empty list = vault publicly reachable for seed phase. Once secrets are seeded, set this to your IP and re-apply — vault flips to default_action=Deny."
+  description = "Operator IP CIDRs allowed to hit Key Vault (e.g. ['198.51.100.5/32']). Empty list = vault publicly reachable for seed phase. Once secrets are seeded, set this to your IP and re-apply. Required (non-empty) when environment=prod."
   default     = []
+
+  validation {
+    condition     = var.environment != "prod" || length(var.keyvault_allowed_ip_ranges) > 0
+    error_message = "keyvault_allowed_ip_ranges must be non-empty when environment=prod. Set to your operator IP CIDR(s) to lock the vault to a known source."
+  }
 }
 
 variable "tags" {

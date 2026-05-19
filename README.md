@@ -162,4 +162,8 @@ The full set lives in `.env.example`. The ones that matter day-to-day:
 | `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:5050` | `mcp-meta/web/lib/api.ts` |
 | `ORCHESTRATOR_SECRET_KEY` | (required) | `api/server.py` |
 | `ORCHESTRATOR_SIGNING_MODE` | `single` (set `external` for multisig) | `agent/src/research_agent/escrow.py` |
+| `POSTGRES_PASSWORD` | (required) | `docker-compose.yml`, `start.sh`, `terraform/modules/postgres` |
+| `AUTH_ENABLED` | `true` | `mcp-meta` JWT and bearer-key gates |
+| `AUTH_FREE_KEY` / `AUTH_PAID_KEY` | (required) | `mcp-meta` shared-key authenticator |
+| `SESSION_TOKEN_SECRET` | (required, 32+ chars) | `agent/src/research_agent/session_tokens.py` |
 | `OPENROUTER_API_KEY` | (optional) | LLM provider when LM Studio is unavailable |

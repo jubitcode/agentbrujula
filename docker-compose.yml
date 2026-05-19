@@ -68,7 +68,7 @@ services:
       SESSION_TOKEN_SECRET: ${SESSION_TOKEN_SECRET:-local-dev-session-secret-do-not-use-in-prod-32chars-min}
       AZURE_FDID: ${AZURE_FDID:-}
     ports:
-      - "5050:5050"
+      - "127.0.0.1:5050:5050"
     depends_on:
       mcp-meta:
         condition: service_healthy
@@ -88,7 +88,7 @@ services:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://mcp-meta:9876}
       NEXT_PUBLIC_MARKETPLACE_URL: ${NEXT_PUBLIC_MARKETPLACE_URL:-http://api:5050}
     ports:
-      - "3002:3002"
+      - "127.0.0.1:3002:3002"
     depends_on:
       - api
       - mcp-meta

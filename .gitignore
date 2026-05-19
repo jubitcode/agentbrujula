@@ -46,7 +46,9 @@ Thumbs.db
 
 # Secrets
 **/.env
-**/.env.local
+**/.env.*
+!**/.env*.example
+!**/.env*.template
 *.pem
 .azure-credentials.local
 scripts/v4_agent_keys.json
