@@ -38,7 +38,7 @@ module "container_app_api" {
 
   env_plain = merge(
     {
-      MCP_META_URL              = "http://${module.container_app_mcp_meta.fqdn}:9876"
+      MCP_META_URL              = "https://${module.container_app_mcp_meta.fqdn}"
       STELLAR_NETWORK           = var.stellar_network
       STELLAR_RPC_URL           = var.stellar_rpc_url
       STELLAR_HORIZON_URL       = var.stellar_horizon_url
