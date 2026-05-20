@@ -697,8 +697,7 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	limitStr := r.URL.Query().Get("limit")
 	limit := 50
 	if limitStr != "" {
-		sscanf, err := fmt.Sscanf(limitStr, "%d", &limit)
-		if err != nil {
+		if _, err := fmt.Sscanf(limitStr, "%d", &limit); err != nil {
 			return
 		}
 	}
