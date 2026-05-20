@@ -53,14 +53,15 @@ Thumbs.db
 .azure-credentials.local
 scripts/v4_agent_keys.json
 scripts/*_keys.json
+scripts/.image-tags
 
 # Terraform
 **/.terraform/
 *.tfstate
 *.tfstate.*
 *.tfplan
-terraform/*.tfvars
-!terraform/terraform.tfvars.example
+**/*.tfvars
+!**/*.tfvars.example
 crash.log
 crash.*.log
 

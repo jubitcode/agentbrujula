@@ -1,0 +1,95 @@
+# az acr build's tar packer only respects `**/`-prefixed patterns
+# (bare paths like `terraform/` are silently skipped). Everything below
+# uses the `**/<name>/` form so it's applied universally.
+
+# VCS / editor / OS
+**/.git/
+**/.gitignore
+**/.gitattributes
+**/.github/
+**/.vscode/
+**/.idea/
+**/.DS_Store
+
+# Whole subtrees not used by either image
+**/contracts/
+**/terraform/
+**/audit/
+**/audit_tasks/
+**/docs/
+**/tasks/
+**/examples/
+
+# mcp-meta web (deploys to Vercel separately) + tests
+mcp-meta/web/
+mcp-meta/test/
+
+# Rust artifacts
+**/target/
+
+# Python artifacts
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.coverage
+**/htmlcov/
+**/*.egg-info/
+
+# Go compiled binaries (committed locally, shouldn't ship in source)
+mcp-meta/mcp-meta
+mcp-meta/adr-advocate
+mcp-meta/adr-decision-maker
+mcp-meta/adr-moderator
+mcp-meta/adr-skeptic
+mcp-meta/adr-writer
+mcp-meta/pods/**/adr-advocate
+mcp-meta/pods/**/adr-decision-maker
+mcp-meta/pods/**/adr-moderator
+mcp-meta/pods/**/adr-skeptic
+mcp-meta/pods/**/adr-writer
+mcp-meta/pods/**/hebbian
+mcp-meta/pods/**/httpcli-pod
+mcp-meta/pods/**/*-pod
+drun/drun
+drun/bin/
+drun/sandbox.out
+drun/vz.out
+drun/coverage.out
+
+# Node / Next.js (web is excluded above; keep these for any nested case)
+**/node_modules/
+**/.next/
+**/.turbo/
+
+# Terraform caches + state + plans + secret tfvars
+**/.terraform/
+**/.terraform.lock.hcl
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/*.tfvars
+!**/*.tfvars.example
+
+# Secrets — never ship into image context
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env*.example
+!**/.env*.template
+scripts/*_keys.json
+scripts/.image-tags
+
+# Logs / temporary
+**/*.log
+**/.coverage*
+
+# Docs (Markdown). Don't ship except top-level README + per-service if needed.
+**/*.md
+!README.md
+!agent/README.md
+!api/README.md
+!mcp-meta/README.md
