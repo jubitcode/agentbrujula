@@ -21,9 +21,10 @@ resource "azurerm_key_vault" "main" {
   public_network_access_enabled = true
 
   network_acls {
-    default_action = length(var.allowed_ip_ranges) == 0 ? "Allow" : "Deny"
-    bypass         = "AzureServices"
-    ip_rules       = var.allowed_ip_ranges
+    default_action             = length(var.allowed_ip_ranges) == 0 && length(var.allowed_subnet_ids) == 0 ? "Allow" : "Deny"
+    bypass                     = "AzureServices"
+    ip_rules                   = var.allowed_ip_ranges
+    virtual_network_subnet_ids = var.allowed_subnet_ids
   }
 }
 

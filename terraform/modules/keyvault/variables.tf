@@ -29,3 +29,9 @@ variable "allowed_ip_ranges" {
   description = "IP CIDRs allowed to hit the vault when network lock-down is active. Empty list = vault is publicly reachable (default_action=Allow, seed phase). Non-empty = default_action=Deny + ip_rules populated."
   default     = []
 }
+
+variable "allowed_subnet_ids" {
+  type        = list(string)
+  description = "Subnet IDs (with Microsoft.KeyVault service endpoint) allowed to reach the vault over the Azure backbone. Container Apps subnet goes here so workload MI can fetch secrets."
+  default     = []
+}

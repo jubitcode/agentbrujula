@@ -36,7 +36,9 @@ resource "azurerm_key_vault_secret" "admin_password" {
 # needed and rotation = update one secret + restart revision.
 resource "azurerm_key_vault_secret" "connection_string" {
   name         = var.connection_string_secret_name
-  value        = "postgresql://${var.admin_username}:${random_password.admin.result}@${azurerm_postgresql_flexible_server.main.fqdn}:5432/${var.database_name}?sslmode=require"
+  # urlencode the password so URL-reserved chars (%, !, &, =, etc. that are
+  # in override_special) don't break psycopg2's DSN parser.
+  value        = "postgresql://${var.admin_username}:${urlencode(random_password.admin.result)}@${azurerm_postgresql_flexible_server.main.fqdn}:5432/${var.database_name}?sslmode=require"
   key_vault_id = var.key_vault_id
 
   lifecycle {

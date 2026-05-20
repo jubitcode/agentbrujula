@@ -14,6 +14,8 @@ resource "azurerm_subnet" "aca" {
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = ["10.20.0.0/23"]
 
+  service_endpoints = ["Microsoft.KeyVault"]
+
   delegation {
     name = "ca-env-delegation"
     service_delegation {
