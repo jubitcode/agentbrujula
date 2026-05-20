@@ -1,0 +1,6 @@
+subscription_id            = "00000000-0000-0000-0000-000000000000"
+tenant_id                  = "00000000-0000-0000-0000-000000000000"
+operator_object_id         = "00000000-0000-0000-0000-000000000000"
+location                   = "eastus2"
+environment                = "prod"
+keyvault_allowed_ip_ranges = ["YOUR.IP.HERE/32"]

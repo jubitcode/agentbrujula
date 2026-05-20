@@ -4,7 +4,6 @@ provider "azurerm" {
 
   features {
     key_vault {
-      # Don't actually purge soft-deleted vaults on destroy — production safety
       purge_soft_delete_on_destroy          = false
       recover_soft_deleted_key_vaults       = true
       purge_soft_deleted_secrets_on_destroy = false
@@ -12,7 +11,6 @@ provider "azurerm" {
     }
 
     resource_group {
-      # Allow destroy of empty RGs only
       prevent_deletion_if_contains_resources = true
     }
   }

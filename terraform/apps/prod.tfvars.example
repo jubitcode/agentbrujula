@@ -1,0 +1,22 @@
+subscription_id = "00000000-0000-0000-0000-000000000000"
+tenant_id       = "00000000-0000-0000-0000-000000000000"
+location        = "eastus2"
+environment     = "prod"
+
+# Set these to the git SHAs produced by scripts/build-and-push.sh.
+# 'latest' is rejected when environment=prod.
+api_image_tag      = "REPLACE_WITH_GIT_SHA"
+mcp_meta_image_tag = "REPLACE_WITH_GIT_SHA"
+
+# Stellar (testnet defaults — flip to public for mainnet).
+stellar_network     = "testnet"
+stellar_rpc_url     = "https://soroban-testnet.stellar.org"
+stellar_horizon_url = "https://horizon-testnet.stellar.org"
+
+# CORS — leave empty until the Vercel frontend is up.
+vercel_origin_patterns = []
+
+# Front Door deferred to phase 7. Flip both lines on once the apps
+# are smoke-tested on the default *.azurecontainerapps.io ingress.
+deploy_front_door = false
+custom_domain     = ""
