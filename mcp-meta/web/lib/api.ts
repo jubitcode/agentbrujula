@@ -1,6 +1,6 @@
 import type { AgentCard, Task, DeployResult, ExecuteResult } from "./types";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9876";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5050";
 
 export function authHeaders(extra?: Record<string, string>): Record<string, string> {
   return { ...extra };

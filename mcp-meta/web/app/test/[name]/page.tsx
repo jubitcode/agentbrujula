@@ -5,7 +5,7 @@ import Markdown from "react-markdown";
 import { InputBar } from "@/components/input-bar";
 import { executeTool, authHeaders } from "@/lib/api";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9876";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5050";
 
 interface AgentInfo {
   name: string;

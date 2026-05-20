@@ -1,6 +1,6 @@
 import { authHeaders } from "./api";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9876";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5050";
 
 export interface StreamEvent {
   event: string;

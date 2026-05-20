@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import * as d3 from "d3";
 import { authHeaders } from "@/lib/api";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9876";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5050";
 
 interface GraphNode {
   id: string;
