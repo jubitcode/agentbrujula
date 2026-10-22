@@ -5,6 +5,7 @@ import base64
 import json as _json_mod
 import logging
 import os
+import re
 import time
 import uuid
 from pathlib import Path
@@ -98,22 +99,40 @@ async def _refund_sweeper():
                     retry_interval_seconds=retry_interval,
                 )
                 if any(
-                    result[k] for k in ("refunded", "reconciled", "failed", "skipped")
+                    result[k]
+                    for k in (
+                        "refunded",
+                        "unreadable",
+                        "refused",
+                        "failed",
+                        "skipped",
+                    )
                 ):
                     logger.info(
-                        "Sweeper: refunded=%d reconciled=%d failed=%d "
+                        "Sweeper: refunded=%d unreadable=%d refused=%d failed=%d "
                         "dead_letter=%d skipped=%d",
                         result["refunded"],
-                        result["reconciled"],
+                        result["unreadable"],
+                        result["refused"],
                         result["failed"],
                         result["dead_letter"],
                         result["skipped"],
                     )
 
-            # Clean up old completed tasks (>24h)
+            # Clean up old completed tasks (>24h). Tasks whose escrow may still
+            # hold funds are preserved regardless of age — see
+            # TaskStore.cleanup.
             cleaned = _store.cleanup(max_age_seconds=86400)
-            if cleaned:
-                logger.info(f"Sweeper: cleaned {cleaned} old tasks")
+            if cleaned["deleted"]:
+                logger.info("Sweeper: cleaned %d old tasks", cleaned["deleted"])
+            if cleaned["preserved_open"]:
+                # Worth a line on its own: these are old hires whose money the
+                # contract may still be holding. A number that keeps growing
+                # means escrows are not being resolved.
+                logger.warning(
+                    "Sweeper: %d old task(s) kept — escrow may still hold funds",
+                    cleaned["preserved_open"],
+                )
 
             # Clean up expired nonces (>5min)
             _store.cleanup_nonces(ttl=300)
@@ -121,11 +140,59 @@ async def _refund_sweeper():
             logger.error(f"Sweeper: unexpected error: {e}")
 
 
+async def _warm_rpc_connection():
+    """Pay the first-connection cost at boot instead of on a user's first click.
+
+    The first HTTPS request a process makes to Soroban RPC is far more expensive
+    than the rest. Measured on a developer machine, 2026-10-20:
+
+        first  get_health : 13.60 s
+        second get_health :  0.28 s
+
+    The cost is connection setup, not Stellar. `soroban-testnet.stellar.org`
+    resolves to four IPv6 addresses as well as four IPv4 ones; where IPv6 is
+    present but degraded, each attempt burns a connect timeout (~3 s measured
+    here) before anything falls back to IPv4, which connects in 0.03 s. Python's
+    client tries them in sequence, so the delay stacks.
+
+    We cannot fix someone's network from here, but we can decide who waits for
+    it. One throwaway call at startup moves that cost off the first real
+    request — which, on a page that reads the registry, was showing up as a
+    30-second stall with nothing on screen.
+
+    Failure is ignored on purpose: this is an optimisation, and an API that
+    refuses to start because a warm-up call failed would be strictly worse than
+    one that is briefly slow.
+    """
+    import logging
+    import time
+
+    logger = logging.getLogger("warmup")
+    try:
+        from research_agent.stellar_config import RPC_URL, get_soroban_server
+
+        started = time.time()
+        # Must warm the SHARED server, not a throwaway one: warming a connection
+        # that nothing else reuses moves the cost around without removing it.
+        # run_in_executor because SorobanServer is synchronous, and blocking the
+        # event loop for 13 seconds at boot would stall everything else.
+        await asyncio.get_event_loop().run_in_executor(
+            None, lambda: get_soroban_server(RPC_URL).get_health()
+        )
+        logger.info("RPC connection warmed in %.2fs (%s)", time.time() - started, RPC_URL)
+    except Exception as exc:  # noqa: BLE001 — never block startup
+        logger.warning("RPC warm-up skipped: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app_instance):
     sweeper_task = asyncio.create_task(_refund_sweeper())
+    # Not awaited: the server should accept connections immediately and warm up
+    # alongside, rather than holding the port closed while it does.
+    warmup_task = asyncio.create_task(_warm_rpc_connection())
     yield
     sweeper_task.cancel()
+    warmup_task.cancel()
 
 
 app = FastAPI(title="Agent Marketplace API", lifespan=lifespan)
@@ -191,6 +258,17 @@ _PUBLIC_PATHS = {
     "/api/auth/challenge-tx",
     "/api/auth/session",
     "/api/registry",
+    # The public escrow view. Everything it returns is already readable from the
+    # escrow contract's own history on any explorer, and the row deliberately
+    # omits the task text and the client's wallet address — a reader gets the
+    # outcome of a payment, not who asked for what.
+    "/api/escrows",
+    # The public verifier. Requiring an account here would defeat the point:
+    # the attestation exists so that somebody who is not us, and has no
+    # relationship with us, can check what the chain says about a deliverable
+    # they were handed. It reads the contract and recomputes a hash; it writes
+    # nothing and stores nothing.
+    "/api/verify",
     "/api/hebbian",
     "/api/hebbian/graph",
     "/api/discover",
@@ -208,6 +286,7 @@ _PUBLIC_PATHS = {
 _PUBLIC_PREFIXES = (
     "/api/escrow/",  # escrow status by task_id
     "/api/agent/",  # public agent info by public_key
+    "/api/verify/",  # attestation by task_id — see the note above
 )
 
 
@@ -323,8 +402,17 @@ def _validate_signed_challenge(
     `/api/auth/session` endpoint (one-time exchange for a JWT).
 
     Supports two formats:
-    - Format 1 (raw signature): publicKey + challenge + signature
-    - Format 2 (Wallet Kit / Freighter signed XDR): publicKey + challenge + signedXdr
+    - Format 1, preferred (SEP-53 message signature): publicKey + challenge +
+      signature. The wallet signs the challenge under the
+      "Stellar Signed Message:\\n" prefix; see research_agent.wallet_auth.
+    - Format 2, fallback (signed challenge transaction): publicKey + challenge +
+      signedXdr. For wallets without signMessage. The transaction is never
+      submitted; it carries the challenge in both the memo and a manage_data op,
+      and both are checked here.
+
+    ⚠ Either way, what is proven is control of the *key*, not of the account.
+    On a multisig account a signer below the threshold still verifies. Nothing
+    downstream of this should treat a session as proof of account control.
     """
     if not public_key or not challenge:
         raise HTTPException(400, "Missing publicKey or challenge")
@@ -532,14 +620,22 @@ def _update_task(task_id: str, **fields) -> None:
 
 
 def _load_knowledge():
+    """The Hebbian knowledge store, on whichever provider is configured.
+
+    This used to be pinned to LM_STUDIO, so on a machine without LM Studio
+    running it failed and returned None — silently, since the whole body is
+    wrapped in `except Exception`. With an OpenRouter key present there is no
+    reason to reach for a local server that may not be there.
+    """
     try:
         from research_agent.knowledge import ResearchKnowledgeStore
-        from research_agent.provider import LM_STUDIO
+        from research_agent.provider import LM_STUDIO, OPENROUTER
 
+        provider = OPENROUTER if OPENROUTER.api_key else LM_STUDIO
         return ResearchKnowledgeStore(
-            llm_base_url=LM_STUDIO.base_url,
-            llm_api_key=LM_STUDIO.api_key,
-            llm_model=LM_STUDIO.model,
+            llm_base_url=provider.base_url,
+            llm_api_key=provider.api_key,
+            llm_model=provider.model,
         )
     except Exception:
         return None
@@ -974,6 +1070,34 @@ def discover(req: DiscoverRequest, request: Request = None):
     }
 
 
+
+def _agent_8004_id(handle: str) -> int | None:
+    """The 8004 registry id for one of our agent handles, if it has one.
+
+    The id comes from configuration (`AGENT_8004_IDS`, a JSON object mapping
+    handle to id) because the registry has no reverse lookup from a Stellar
+    address back to an agent id. What comes from the chain is the part that
+    matters: the id -> payment wallet link, read by
+    `identity_8004.resolve_payment_address`.
+
+    A proper reverse index would remove this configuration step, and is the
+    obvious next piece.
+    """
+    raw = os.environ.get("AGENT_8004_IDS", "").strip()
+    if not raw:
+        return None
+    try:
+        mapping = _json_mod.loads(raw)
+    except Exception:
+        logger.warning("AGENT_8004_IDS is not valid JSON; ignoring it")
+        return None
+    value = mapping.get(handle)
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 @app.post(
     "/api/hire",
     dependencies=[
@@ -1064,6 +1188,26 @@ def build_payment(request: Request, req: BuildPaymentRequest):
     orch_kp = _load_orchestrator_kp()
     agent_address = orch_kp.public_key if orch_kp else tool["agent"]
 
+    # Where the agent gets paid, resolved from the 8004 registry when the
+    # agent has an identity there. The point is not the lookup: it is that the
+    # client can check the destination against a registry neither we nor the
+    # agent control, instead of taking our database's word for it.
+    #
+    # Falls back to the local record, and says which one it used. Refusing to
+    # hire a working agent because a third-party registry has no row for it
+    # would be the wrong trade; quietly presenting a local value as an on-chain
+    # one would be worse.
+    from research_agent.identity_8004 import resolve_payment_address
+
+    agent_8004_id = _agent_8004_id(req.agent_handle)
+    payment_address, address_source = resolve_payment_address(
+        agent_8004_id, agent_address
+    )
+    if orch_kp is None:
+        # Without an orchestrator the escrow names the agent directly, so the
+        # resolved address is the one that gets written into the entry.
+        agent_address = payment_address
+
     try:
         result = build_escrow_tx(
             client_public=req.user_public_key,
@@ -1076,6 +1220,15 @@ def build_payment(request: Request, req: BuildPaymentRequest):
             "unsigned_xdr": result["unsigned_xdr"],
             "task_id": task_id,
             "deadline": deadline_unix,
+            "agent_identity": {
+                "handle": req.agent_handle,
+                "agent_id_8004": agent_8004_id,
+                "payment_address": payment_address,
+                # "8004" means the chain said so. "local" means we did.
+                "address_source": address_source,
+                "registry": os.environ.get("IDENTITY_8004_CONTRACT")
+                or "CDE3K4COIAGWNNJQQLL26SYI3KBJF5FUDHXG5FA6GYDJCG7T5V7FIWZH",
+            },
             "amount_usdc": req.amount_usdc,
             "destination": X402_ESCROW_CONTRACT,
             "destination_label": f"Escrow for {req.agent_handle}",
@@ -1155,7 +1308,9 @@ async def submit_payment(
         loop = asyncio.get_event_loop()
 
         def _submit_and_poll():
-            server = SorobanServer(rpc_url)
+            from research_agent.stellar_config import get_soroban_server
+
+            server = get_soroban_server(rpc_url)
             tx = stellar_sdk.TransactionEnvelope.from_xdr(
                 req.signed_xdr,
                 NETWORK_PASSPHRASE,
@@ -1390,18 +1545,73 @@ def get_result(task_id: str, wallet: str = Depends(_wallet_auth)):
     output_tokens = len(final_response.split())
 
     input_tokens = prompt_tokens
-    if prompt_tokens < 100:
-        max_ratio = 0
-        compliant = True
-    else:
-        max_ratio = 200
-        compliant = False
-        try:
-            compliant = verify_compression(
-                task_id, input_tokens, output_tokens, max_ratio_pct=max_ratio
-            )
-        except Exception:
-            pass
+
+    # --- the gate -----------------------------------------------------------
+    # What releases the money is an attestation on Stellar, not this process's
+    # opinion. The sequence is: build the evidence package, decide the verdict,
+    # write it on-chain, then ask the chain whether settling is justified.
+    #
+    # It used to be the compression ratio alone, and `if prompt_tokens < 100`
+    # short-circuited it to `compliant = True` — so most tasks settled on no
+    # check whatsoever. The ratio is now one check among four and no longer
+    # decides anything by itself. See research_agent.evidence.verify_delivery.
+    from research_agent.evidence import (
+        build_evidence_package,
+        evidence_hash,
+        verify_delivery,
+        settlement_allowed,
+        attest,
+        EvidenceNotConfigured,
+    )
+
+    evidence_package = build_evidence_package(
+        task_id=task_id,
+        agent_handle=task.get("agent_handle", ""),
+        brief=task["task"],
+        output=final_response,
+        called_tools=called_tools,
+    )
+    ev_hash = evidence_hash(evidence_package)
+    verdict_passed, verdict_checks = verify_delivery(evidence_package)
+
+    # Kept for the response shape and for the Hebbian reinforcement below,
+    # which should only learn from work that passed.
+    compliant = verdict_passed
+    max_ratio = 200
+
+    attestation = None
+    if task.get("escrow_tx") and not task.get("settled") and not task.get("refunded"):
+        orch_kp = _load_orchestrator_kp()
+        if orch_kp:
+            try:
+                # The agent's address comes from the escrow entry on chain, not
+                # from our own database: it is the address the contract will
+                # actually pay, so it is the one the attestation should name.
+                from research_agent.escrow import get_escrow_status
+
+                chain = get_escrow_status(task_id) or {}
+                agent_address = chain.get("agent") or orch_kp.public_key
+
+                result_att = attest(
+                    orch_kp, task_id, agent_address, ev_hash, verdict_passed
+                )
+                attestation = {
+                    "tx": result_att.get("hash"),
+                    "status": result_att.get("status"),
+                    "passed": verdict_passed,
+                    "evidence_hash": ev_hash.hex(),
+                    "checks": verdict_checks,
+                }
+            except EvidenceNotConfigured as e:
+                attestation = {"status": "NOT_CONFIGURED", "error": str(e)}
+            except Exception as att_err:
+                import logging
+
+                logging.error(f"Attestation failed for {task_id}: {att_err}")
+                attestation = {
+                    "status": "ERROR",
+                    "error": f"{type(att_err).__name__}: {att_err}",
+                }
 
     # Reinforce Hebbian on success — only once per task
     if compliant and not task.get("hebbian_reinforced"):
@@ -1414,9 +1624,20 @@ def get_result(task_id: str, wallet: str = Depends(_wallet_auth)):
         )
         _update_task(task_id, hebbian_reinforced=True)
 
-    # Query mcp-meta for actual cost and settle if compliant
+    # Query mcp-meta for actual cost and settle, but only if the chain says so
     settlement = None
-    if compliant and task.get("escrow_tx") and not task.get("settled"):
+    refund = None
+    gate_allowed = False
+    gate_reason = "not evaluated"
+    if task.get("escrow_tx") and not task.get("settled") and not task.get("refunded"):
+        try:
+            gate_allowed, gate_reason = settlement_allowed(task_id, evidence_package)
+        except Exception as gate_err:
+            # Fails closed. An attestation layer we cannot read is not a yes.
+            gate_allowed = False
+            gate_reason = f"gate unavailable ({type(gate_err).__name__}: {gate_err})"
+
+    if gate_allowed:
         try:
             import httpx
             from research_agent.mcp_client import _get_mcp_url, _get_mcp_headers
@@ -1460,6 +1681,48 @@ def get_result(task_id: str, wallet: str = Depends(_wallet_auth)):
 
             logging.error(f"Settlement failed for {task_id}: {settle_err}")
 
+    elif task.get("escrow_tx") and not task.get("settled") and not task.get("refunded"):
+        # The verdict failed, or the chain cannot justify a payout. The client
+        # gets their money back — and this is the path that actually
+        # demonstrates the product: anybody can release funds on a button
+        # press, so the return is what the escrow is for.
+        #
+        # Only on a recorded failing verdict. A gate that could not be read is
+        # not grounds for moving money either way: the task waits for a human.
+        if attestation and attestation.get("status") in ("SUCCESS", "ALREADY_ATTESTED") \
+                and attestation.get("passed") is False:
+            orch_kp = _load_orchestrator_kp()
+            if orch_kp:
+                try:
+                    from research_agent.escrow import refund_escrow
+
+                    r = refund_escrow(orch_kp, task_id)
+                    if r.get("status") == "SUCCESS":
+                        _update_task(
+                            task_id,
+                            refunded=1,
+                            status="refunded",
+                            refund_tx_hash=r.get("hash") or "",
+                            refund_reason="evidence_attestation_failed",
+                        )
+                        task["refunded"] = 1
+                    refund = {
+                        "refund_tx": r.get("hash"),
+                        "status": r.get("status"),
+                        "reason": "the evidence attestation recorded a failing verdict",
+                        "failed_checks": [
+                            c for c in verdict_checks if not c["passed"]
+                        ],
+                    }
+                except Exception as refund_err:
+                    import logging
+
+                    logging.error(f"Refund failed for {task_id}: {refund_err}")
+                    refund = {
+                        "status": "ERROR",
+                        "error": f"{type(refund_err).__name__}: {refund_err}",
+                    }
+
     return {
         "status": task["status"],
         "output": _format_output(final_response),
@@ -1469,12 +1732,25 @@ def get_result(task_id: str, wallet: str = Depends(_wallet_auth)):
         "max_ratio": max_ratio,
         "balance_id": task.get("balance_id"),
         "escrow_tx": task.get("escrow_tx"),
+        # What the money decision rested on, so a client can check it without
+        # taking our word for any of it.
+        "evidence": {
+            "hash": ev_hash.hex(),
+            "verdict": "passed" if verdict_passed else "failed",
+            "checks": verdict_checks,
+            "attestation": attestation,
+            "gate": {"allowed": gate_allowed, "reason": gate_reason},
+            "contract": os.environ.get("EVIDENCE_CONTRACT", "") or None,
+        },
+        "refund": refund,
         "settlement": settlement,
         "settlement_status": (
             "settled"
             if task.get("settled")
+            else "refunded"
+            if task.get("refunded")
             else "ready_for_claim"
-            if compliant
+            if gate_allowed
             and task.get("escrow_tx")
             and time.time() < task.get("deadline_unix", 0)
             else "expired"
@@ -1638,6 +1914,47 @@ def execute_a2a(req: ExecuteA2ARequest, request: Request):
     }
 
 
+@app.get("/api/escrows")
+def list_escrows(limit: int = 25):
+    """List the most recent tasks that locked money, newest first.
+
+    Deliberately does NOT read the chain. One Soroban simulate costs a round
+    trip, so enriching 25 rows inline would turn a page load into 25 of them —
+    and the first call in a cold process is far more expensive than the rest.
+
+    Each row therefore carries what the server knows plus the links to check it:
+    the transaction on stellar.expert, and `/api/escrow/{task_id}` for the entry
+    as the contract holds it. The page fills those in per row, so it renders
+    immediately and the on-chain truth arrives as it comes.
+    """
+    limit = max(1, min(limit, 100))
+    rows = _store.list_with_escrow(limit=limit)
+
+    explorer = f"https://stellar.expert/explorer/{'public' if STELLAR_NETWORK == 'public' else 'testnet'}"
+
+    return {
+        "escrows": [
+            {
+                "task_id": r.get("task_id"),
+                "agent_handle": r.get("agent_handle") or "",
+                "escrow_tx": r.get("escrow_tx") or "",
+                "status": r.get("status") or "",
+                "settled": bool(r.get("settled")),
+                "refunded": bool(r.get("refunded")),
+                "deadline_unix": r.get("deadline_unix") or 0,
+                "created_at": r.get("created_at") or 0,
+                "refund_tx_hash": r.get("refund_tx_hash") or "",
+                "tx_url": f"{explorer}/tx/{r.get('escrow_tx')}" if r.get("escrow_tx") else "",
+            }
+            for r in rows
+        ],
+        "count": len(rows),
+        "escrow_contract": X402_ESCROW_CONTRACT or "",
+        "contract_url": f"{explorer}/contract/{X402_ESCROW_CONTRACT}" if X402_ESCROW_CONTRACT else "",
+        "network": STELLAR_NETWORK,
+    }
+
+
 @app.get("/api/escrow/{task_id}")
 def escrow_status(task_id: str):
     """Get on-chain escrow status for a task."""
@@ -1797,6 +2114,84 @@ def get_result_auth(task_id: str, wallet: str = Depends(_wallet_auth)):
         "output": _format_output(output) if output else None,
         "settlement_status": "settled" if task.get("settled") else "pending",
     }
+
+
+# ── Profile ─────────────────────────────────────────────────────────────
+#
+# The first endpoints about a person rather than a task.
+#
+# The wallet address always comes from `_wallet_auth` — that is, from a signed
+# challenge — and never from the request body. Taking it from the body would
+# let anyone write someone else's profile by typing their address, which is
+# the whole reason the signature exists.
+#
+# Nothing here is verified: a name is whatever someone typed, and an email is
+# never confirmed. They are for addressing a person on screen, not for trust.
+# What carries trust is the wallet, because controlling one costs reserve.
+
+
+class ProfileRequest(BaseModel):
+    display_name: str = ""
+    email: str = ""
+
+
+def _profile_response(account: dict | None, wallet: str) -> dict:
+    """A profile the frontend can render whether or not one was ever saved."""
+    if not account:
+        return {
+            "wallet_address": wallet,
+            "display_name": "",
+            "email": "",
+            "role": "client",
+            "registered": False,
+        }
+    return {
+        "wallet_address": account["wallet_address"],
+        "display_name": account.get("display_name") or "",
+        "email": account.get("email") or "",
+        "role": account.get("role") or "client",
+        "registered": True,
+        "created_at": account.get("created_at"),
+    }
+
+
+@app.get("/api/profile")
+def get_profile(wallet: str = Depends(_wallet_auth)):
+    """The signed-in person's profile.
+
+    `registered: false` is the answer for a wallet that has authenticated but
+    never completed the form — the frontend uses it to decide whether to send
+    someone through sign-up or straight into the app.
+    """
+    return _profile_response(_store.get_account(wallet), wallet)
+
+
+# POST, not PUT, even though this creates-or-updates and PUT would say that
+# better: the CORS middleware above allows GET, POST and OPTIONS only
+# (`allow_methods`, :212), so a PUT never survives the browser's preflight —
+# it fails with "Failed to fetch" before the handler is reached. Widening
+# CORS for one endpoint's verb is a worse trade than matching the convention
+# every other route here already follows.
+@app.post("/api/profile")
+@limiter.limit("20/hour")
+def save_profile(
+    request: Request,
+    req: ProfileRequest,
+    wallet: str = Depends(_wallet_auth),
+):
+    """Create or update the signed-in person's profile."""
+    name = (req.display_name or "").strip()[:80]
+    email = (req.email or "").strip()[:254]
+
+    if not name:
+        raise HTTPException(400, "display_name is required")
+    # Deliberately not a strict RFC check: the point is catching a typo, not
+    # refusing an unusual-but-valid address. Nothing is sent to it.
+    if email and ("@" not in email or email.startswith("@") or email.endswith("@")):
+        raise HTTPException(400, "email does not look like an address")
+
+    account = _store.upsert_account(wallet, display_name=name, email=email)
+    return _profile_response(account, wallet)
 
 
 class FundRequest(BaseModel):
@@ -2185,11 +2580,25 @@ def hebbian_graph():
     return {"nodes": nodes, "edges": edges}
 
 
+#: Handles left behind by test runs and demos. They are registered on chain
+#: and they are not products: on 2026-10-21 the public registry returned 14
+#: agents, 8 of which were `test-tool-1792540296` and friends. A catalogue
+#: that lists those is making a false claim about what this marketplace is.
+#:
+#: Filtered at the read, not deleted from the contract — the registrations are
+#: real transactions and erasing on-chain history to tidy a listing is the
+#: wrong trade. `?include_test=1` still returns everything, for whoever is
+#: debugging the registry itself.
+_TEST_HANDLE = re.compile(r"^(test-|demo-)")
+
+
 @app.get("/api/registry")
-def registry():
+def registry(include_test: bool = False):
     tools = list_active_full()
     agents = []
     for tool in tools:
+        if not include_test and _TEST_HANDLE.match(tool.get("handle") or ""):
+            continue
         rep = 0
         try:
             rep = get_rep(tool["agent"])
@@ -2697,3 +3106,170 @@ async def onboard(req: OnboardRequest):
         yield send("complete", "done", {"public_key": kp.public_key})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# ---------------------------------------------------------------------------
+# Public verifier
+# ---------------------------------------------------------------------------
+# The point of the attestation is that somebody who is not us can check it. So
+# these two endpoints take no session, no wallet and no API key: anybody
+# holding a task id — or a deliverable they were given — can confirm what the
+# chain says about it.
+
+
+class VerifyRequest(BaseModel):
+    task_id: str
+    brief: str
+    output: str
+    agent_handle: str = ""
+    called_tools: list = []
+
+
+@app.get("/api/verify/{task_id}")
+async def verify_attestation(task_id: str):
+    """What Stellar records about this task's evidence.
+
+    Read straight from the contract, not from our database. If the two ever
+    disagree, the chain is the one that matters, and this endpoint is how a
+    client finds that out without asking us.
+    """
+    from research_agent.evidence import (
+        get_attestation,
+        EvidenceNotConfigured,
+    )
+
+    contract = os.environ.get("EVIDENCE_CONTRACT", "") or None
+    try:
+        record = get_attestation(task_id)
+    except EvidenceNotConfigured as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"no attestation layer is configured on this deployment: {e}",
+        )
+    except Exception as e:
+        # Not a 200 with a falsy body: a client must not read "we could not
+        # reach the chain" as "this task was never attested".
+        raise HTTPException(
+            status_code=502,
+            detail=f"could not read the attestation ({type(e).__name__}: {e})",
+        )
+
+    if record is None:
+        return {
+            "task_id": task_id,
+            "attested": False,
+            "contract": contract,
+            "explorer": _explorer_contract_url(contract),
+            "note": "no attestation on chain for this task. That is not a "
+                    "verdict — it means nothing has been checked yet.",
+        }
+
+    return {
+        "task_id": task_id,
+        "attested": True,
+        "verdict": "passed" if record.get("passed") else "failed",
+        "evidence_hash": record.get("evidence_hash"),
+        "agent": record.get("agent"),
+        "attested_at": record.get("attested_at"),
+        "contract": contract,
+        "explorer": _explorer_contract_url(contract),
+    }
+
+
+@app.post("/api/verify")
+async def verify_deliverable(req: VerifyRequest):
+    """Recompute the hash of a deliverable and compare it with the chain.
+
+    This is the question that makes the attestation worth anything: *is the
+    thing I was given the thing that was checked?* A passing attestation for
+    some other deliverable is not an answer in the holder's favour, so a
+    mismatch is reported as plainly as a match.
+
+    Takes the deliverable itself rather than a task id alone, because the
+    comparison is only meaningful against content the caller holds. Nothing is
+    stored and nothing is written to the chain.
+    """
+    from research_agent.evidence import (
+        build_evidence_package,
+        evidence_hash_hex,
+        get_attestation,
+        verify_delivery,
+        EvidenceNotConfigured,
+    )
+
+    package = build_evidence_package(
+        task_id=req.task_id,
+        agent_handle=req.agent_handle,
+        brief=req.brief,
+        output=req.output,
+        called_tools=req.called_tools,
+    )
+    computed = evidence_hash_hex(package)
+    recomputed_verdict, checks = verify_delivery(package)
+    contract = os.environ.get("EVIDENCE_CONTRACT", "") or None
+
+    try:
+        record = get_attestation(req.task_id)
+    except EvidenceNotConfigured as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"could not read the attestation ({type(e).__name__}: {e})",
+        )
+
+    if record is None:
+        return {
+            "task_id": req.task_id,
+            "computed_hash": computed,
+            "attested": False,
+            "matches": False,
+            "verdict": None,
+            "recomputed_verdict": "passed" if recomputed_verdict else "failed",
+            "checks": checks,
+            "contract": contract,
+            "explorer": _explorer_contract_url(contract),
+            "conclusion": "There is no attestation for this task, so nothing "
+                          "confirms this deliverable was ever checked.",
+        }
+
+    on_chain = (record.get("evidence_hash") or "").lower()
+    matches = on_chain == computed
+    passed = bool(record.get("passed"))
+
+    if matches and passed:
+        conclusion = ("This is the deliverable that was checked, and the check "
+                      "passed. The payout was justified.")
+    elif matches and not passed:
+        conclusion = ("This is the deliverable that was checked, and the check "
+                      "failed. The client should have been refunded.")
+    else:
+        conclusion = ("This is NOT the deliverable that was checked. The "
+                      "attestation on chain is for different content, so it "
+                      "says nothing about what you are holding.")
+
+    return {
+        "task_id": req.task_id,
+        "computed_hash": computed,
+        "attested_hash": on_chain,
+        "attested": True,
+        "matches": matches,
+        "verdict": "passed" if passed else "failed",
+        # What the same checks say when re-run on this content now. A
+        # disagreement with the on-chain verdict is worth seeing: it means the
+        # content changed, or the rules did.
+        "recomputed_verdict": "passed" if recomputed_verdict else "failed",
+        "checks": checks,
+        "agent": record.get("agent"),
+        "attested_at": record.get("attested_at"),
+        "contract": contract,
+        "explorer": _explorer_contract_url(contract),
+        "conclusion": conclusion,
+    }
+
+
+def _explorer_contract_url(contract: str | None) -> str | None:
+    if not contract:
+        return None
+    net = "public" if "Public" in (NETWORK_PASSPHRASE or "") else "testnet"
+    return f"https://stellar.expert/explorer/{net}/contract/{contract}"
