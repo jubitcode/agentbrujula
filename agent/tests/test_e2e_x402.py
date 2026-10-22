@@ -63,7 +63,16 @@ class TestHireRequiresPayment:
         assert "PAYMENT-REQUIRED" in res.headers
 
         payload = json.loads(base64.b64decode(res.headers["PAYMENT-REQUIRED"]))
-        assert payload["price"] == "0.10"
+
+        # /api/hire prices with an estimator, so `price` carries the budget
+        # CEILING — the most this caller can be charged — not the flat floor the
+        # endpoint is declared with. A generic x402 client reads `price` and has
+        # to lock enough; quoting the floor there would under-collateralise the
+        # escrow. The estimate and the per-tool breakdown ride alongside.
+        assert payload["price"] == payload["budget_ceiling"]
+        assert float(payload["price"]) >= float(payload["estimated_cost"])
+        assert "rate_breakdown" in payload
+
         assert "stellar" in payload["network"]
         assert payload["payTo"] == "CDZ2YL6K2MWL72H6Q4L4JEXWNHV43EXUYEZWARLRQF7O36MFBZG4RSTR"
         assert "facilitatorUrl" in payload

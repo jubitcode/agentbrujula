@@ -22,10 +22,19 @@ def _make_store() -> TaskStore:
     return TaskStore(db_path=f.name)
 
 
+#: A real Stellar transaction hash: 64 hex characters.
+REAL_TX = "e6d6a1a06f1fd7b57d57aa8f1c96a63dae167f256ee2ecba343f2f20b08a7966"
+
+
 def _create_expired_task(store: TaskStore, task_id: str, seconds_ago: int = 60) -> None:
+    # A real 64-character transaction hash. `refund_authorisation` refuses a
+    # task whose escrow_tx is not one, because a row carrying "abc" never
+    # locked funds — so a fixture using a placeholder would be testing the
+    # refund path against a task that can never reach it in production.
     store.create_task(
         task_id=task_id,
         wallet_address="GTEST",
+        escrow_tx=REAL_TX,
         deadline_unix=int(time.time()) - seconds_ago,
         status="pending",
     )

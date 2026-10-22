@@ -120,9 +120,37 @@ class TestAgentCannotClaimAfterDeadline:
 
 class TestOnChainTaskLifecycle:
     def test_claim_task_on_chain(self):
+        """Register a tool, then claim a task against it — both on-chain.
+
+        The claim has to register its own tool first. `claim_task` does
+        `tools.get(handle).expect("tool not found")`, so claiming against a
+        handle nobody registered traps the contract. This test used to claim
+        `pdf-reader`, which is not in the registry — it was passing only while
+        some earlier run happened to have registered that handle, and it fails
+        for everyone else. Registering here makes the test say what it means:
+        the register → claim lifecycle works.
+        """
+        from research_agent.soroban_client import submit_register_tool
+
         orch_kp = Keypair.random()
         assert fund_testnet(orch_kp.public_key)
         time.sleep(3)
+
+        # A handle unique to this run, so repeated runs never collide on the
+        # registry's "handle already registered" check.
+        handle = f"test-tool-{int(time.time())}"
+
+        register_tx = submit_register_tool(
+            agent_kp=orch_kp,
+            handle=handle,
+            url="https://example.invalid/agent",
+            capabilities=["testing"],
+            model_tier="HAIKU",
+            rate_stroops=1_000,
+            max_tokens=1_000,
+        )
+        assert register_tx, "tool registration did not return a transaction hash"
+        time.sleep(3)  # let the ledger close before the claim reads the entry
 
         task_id = f"test-task-{int(time.time())}"
         deadline = int(time.time()) + 300
@@ -130,7 +158,7 @@ class TestOnChainTaskLifecycle:
         tx_hash = submit_claim_task(
             requester_kp=orch_kp,
             task_id=task_id,
-            handle="pdf-reader",
+            handle=handle,
             deadline=deadline,
         )
         assert tx_hash is not None

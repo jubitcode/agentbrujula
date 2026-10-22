@@ -88,14 +88,20 @@ class TestSubmitPayment:
             "task": "research",
             "budget_xlm": 5.0,
         })
-        # 405 (method-not-allowed) would mean the endpoint is missing; anything else proves routing works
+        # 405 (method-not-allowed) would mean the endpoint is missing; anything
+        # else proves routing works. Unauthenticated it answers 401, because the
+        # endpoint submits a transaction and is gated on wallet auth.
         assert res.status_code != 405
-        assert res.status_code in (404, 502, 500)
+        assert res.status_code in (401, 404, 502, 500)
 
-    def test_submit_payment_requires_signed_xdr(self):
+    def test_submit_payment_rejects_unauthenticated_callers_before_validating(self):
+        # Auth is checked BEFORE the request body, so a caller with no
+        # credentials gets 401 rather than 422. That ordering matters: a 422
+        # would confirm which fields the endpoint expects to someone who has not
+        # proved anything, which is free reconnaissance.
         res = client.post("/api/submit-payment", json={
             "agent_handle": "test",
             "task": "research",
             "budget_xlm": 5.0,
         })
-        assert res.status_code == 422
+        assert res.status_code == 401

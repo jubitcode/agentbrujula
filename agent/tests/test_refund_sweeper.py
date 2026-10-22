@@ -17,6 +17,10 @@ import pytest
 from research_agent.task_store import TaskStore
 
 
+#: A real Stellar transaction hash: 64 hex characters.
+REAL_TX = "e6d6a1a06f1fd7b57d57aa8f1c96a63dae167f256ee2ecba343f2f20b08a7966"
+
+
 class FakeKeypair:
     """Stand-in for a stellar Keypair — only forwarded to refund_fn which ignores it."""
     public_key = "GORCH00000000000000000000000000000000000000000000000000000"
@@ -24,12 +28,16 @@ class FakeKeypair:
 
 def _make_expired_task(store: TaskStore, task_id: str = "task-001") -> dict:
     """Task the sweeper picks up: expired deadline, unsettled, unrefunded, non-terminal."""
+    # A real 64-character transaction hash. `refund_authorisation` refuses a
+    # task whose escrow_tx is not one, because a row carrying "abc" never
+    # locked funds — so a fixture using a placeholder would be testing the
+    # refund path against a task that can never reach it in production.
     store.create_task(
         task_id=task_id,
         wallet_address="GUSER000000000000000000000000000000000000000000000000000000",
         agent_handle="research-agent",
         task_text="anything",
-        escrow_tx="abc",
+        escrow_tx=REAL_TX,
         deadline_unix=int(time.time()) - 60,
         status="pending",
     )
@@ -179,11 +187,16 @@ def test_dead_letter_task_not_returned_by_list_expired(store, process_one_refund
     assert all(t["task_id"] != task["task_id"] for t in expired)
 
 
-def test_idempotent_when_no_onchain_escrow(store, process_one_refund):
-    """If escrow already settled/refunded out-of-band, reconcile DB without calling refund again."""
+def test_unreadable_escrow_stops_retrying_without_calling_refund(store, process_one_refund):
+    """An entry the contract cannot read is terminal — but refund is not retried.
+
+    Calling `refund_to_client` on an entry `get_escrow` traps on cannot
+    succeed, so there is nothing to gain from trying.
+    """
     task = _make_expired_task(store)
 
     refund_calls = {"n": 0}
+
     def refund_fn(kp, tid):
         refund_calls["n"] += 1
         return {"hash": "should-not-happen", "status": "SUCCESS", "error": None}
@@ -193,9 +206,51 @@ def test_idempotent_when_no_onchain_escrow(store, process_one_refund):
     process_one_refund(FakeKeypair(), task, store, refund_fn=refund_fn, status_fn=status_fn)
 
     fresh = store.get_task(task["task_id"])
-    assert fresh["refunded"] == 1
-    assert fresh["status"] == "refunded"
+    assert fresh["status"] == "escrow_entry_unreadable"
     assert refund_calls["n"] == 0
+
+
+def test_unreadable_escrow_is_never_recorded_as_refunded(store, process_one_refund):
+    """The money claim this code must not make.
+
+    `get_escrow` traps identically whether the entry was resolved and removed
+    or **evicted because its TTL expired** — and an evicted entry can still
+    have funds in the contract. Measured on 2026-10-20: escrows created in May
+    read as `not_found` while `usdc-escrow` still held 0.745 USDC.
+
+    Marking those `refunded=1` tells a client their money came back when
+    nobody can show that it did. The row has to say "we cannot account for
+    this", which is true, instead of "refunded", which is not.
+    """
+    task = _make_expired_task(store)
+    status_fn = lambda tid: {"status": "not_found"}
+    refund_fn = lambda kp, tid: {"hash": "h", "status": "SUCCESS", "error": None}
+
+    process_one_refund(FakeKeypair(), task, store, refund_fn=refund_fn, status_fn=status_fn)
+
+    fresh = store.get_task(task["task_id"])
+    assert fresh["refunded"] == 0, "claimed a refund that cannot be demonstrated"
+    assert fresh["status"] != "refunded"
+    # And it must leave a trail a person can act on.
+    assert "manual reconciliation" in fresh["refund_last_error"]
+
+
+def test_unreadable_is_counted_apart_from_refunded(store, monkeypatch):
+    """A sweep must not fold unaccounted escrows into its refund total."""
+    from research_agent import refund_sweeper as rs
+
+    task = _make_expired_task(store)
+    result = rs.sweep_expired_refunds(
+        store,
+        FakeKeypair(),
+        refund_fn=lambda kp, tid: {"hash": "h", "status": "SUCCESS", "error": None},
+        status_fn=lambda tid: {"status": "not_found"},
+    )
+
+    assert result["unreadable"] == 1
+    assert result["refunded"] == 0
+    assert result["failed"] == 0
+    assert store.get_task(task["task_id"])["refunded"] == 0
 
 
 def test_list_expired_skips_already_refunded(store):
@@ -381,6 +436,8 @@ def test_outcome_string_matches_each_branch(store, process_one_refund):
         status_fn=lambda tid: {"status": "found"})
 
     assert success["outcome"] == "refunded"
-    assert reconciled["outcome"] == "reconciled"
+    # Renamed from "reconciled": an unreadable entry is not reconciled with
+    # anything, it is unaccounted for. See STATUS_ENTRY_UNREADABLE.
+    assert reconciled["outcome"] == "unreadable"
     assert retry["outcome"] == "retry_scheduled"
     assert dead["outcome"] == "dead_letter"
