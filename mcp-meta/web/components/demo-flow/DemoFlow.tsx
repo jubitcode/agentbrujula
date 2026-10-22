@@ -13,38 +13,59 @@ type LineKind = "cmd" | "out" | "in" | "json" | "log" | "ok";
 
 const PROMPT = "andrea@brujula:~$";
 
+/*
+ * Every endpoint, contract call and field name below is the real one. The only
+ * invented values are the task id and the transaction hash, which stand in for
+ * whatever a given run produces — the footer says so.
+ *
+ * Checked against: api/server.py (/api/hire, /api/build-payment,
+ * /api/submit-payment, /api/execute/{id}, /api/result/{id}),
+ * contracts/usdc-escrow/src/lib.rs (create_escrow, settle) and
+ * contracts/compression-compliance/src/lib.rs (verify_compression).
+ */
 const LINES: Array<{ at: number; kind: LineKind; text: string }> = [
-  // chapter 1: discover + hire
-  { at: 25, kind: "cmd", text: `${PROMPT} brujula hire research-agent \\` },
-  { at: 35, kind: "cmd", text: `        --task "AI infra trends 2026" --budget 0.10` },
-  { at: 60, kind: "out", text: "→ POST /api/hire" },
+  // chapter 1: hire, and the 402 that answers it
+  { at: 25, kind: "cmd", text: `${PROMPT} curl -sX POST :5050/api/hire \\` },
+  { at: 35, kind: "cmd", text: `       -d '{"agent_handle":"research-agent", …}'` },
+  { at: 60, kind: "out", text: "→ POST /api/hire        no payment header" },
   { at: 78, kind: "in", text: "← 402 Payment Required" },
-  { at: 92, kind: "json", text: "  rate         : 0.05 USDC/call" },
-  { at: 102, kind: "json", text: "  budget_lock  : 0.15 USDC" },
-  { at: 112, kind: "json", text: "  escrow       : CAFERYY…272A" },
+  { at: 92, kind: "json", text: "  price   : 0.15 USDC   estimate 0.10 × 1.5" },
+  { at: 102, kind: "json", text: "  network : stellar:testnet" },
+  { at: 112, kind: "json", text: "  payTo   : CAMPNA3T…OCCO   usdc-escrow" },
 
-  // chapter 2: lock
-  { at: 150, kind: "cmd", text: `${PROMPT} brujula pay --sign` },
-  { at: 175, kind: "log", text: "  signing with Freighter…" },
-  { at: 205, kind: "out", text: "→ POST /api/submit" },
-  { at: 225, kind: "in", text: "← tx 7c2bb9…c3e8a4 (in_ledger 5_812_443)" },
-  { at: 250, kind: "ok", text: "  ✓ 0.15 USDC locked in escrow" },
+  // chapter 2: lock the money
+  { at: 150, kind: "cmd", text: `${PROMPT} curl -sX POST :5050/api/build-payment` },
+  { at: 170, kind: "in", text: "← unsigned XDR  AAAAAgAAAAD…" },
+  { at: 190, kind: "log", text: "  signed in Freighter — the key stays in the browser" },
+  { at: 212, kind: "out", text: "→ POST /api/submit-payment" },
+  { at: 232, kind: "in", text: "← create_escrow()  tx 7c2bb9…c3e8a4" },
+  { at: 255, kind: "ok", text: "  ✓ 0.15 USDC locked — the orchestrator holds nothing" },
 
-  // chapter 3: execute
-  { at: 290, kind: "log", text: "  [tool_call] search(\"AI infra trends 2026\")" },
-  { at: 320, kind: "log", text: "  [tool_call] summarize(4 sources)" },
-  { at: 355, kind: "log", text: "  [complete] output ready (380 tokens)" },
+  // chapter 3: the agent works
+  { at: 295, kind: "cmd", text: `${PROMPT} curl -N :5050/api/execute/3f9c1b72…` },
+  { at: 315, kind: "log", text: "  event: log       Sending to A2A" },
+  { at: 338, kind: "log", text: "  event: progress  searching sources (1/2)" },
+  { at: 360, kind: "log", text: "  event: complete  Execution complete" },
 
-  // chapter 4: verify + settle
-  { at: 395, kind: "cmd", text: `${PROMPT} brujula settle --task t-7c2b` },
-  { at: 420, kind: "out", text: "→ compliance.verify_compression(in=1240, out=380)" },
-  { at: 445, kind: "in", text: "← compliant: true" },
-  { at: 470, kind: "out", text: "→ escrow.settle(agent=0.08, client_refund=0.07)" },
-  { at: 495, kind: "ok", text: "  ✓ done in 4.2s" },
+  // chapter 4: verify, then settle
+  { at: 398, kind: "cmd", text: `${PROMPT} curl -s :5050/api/result/3f9c1b72…` },
+  { at: 420, kind: "out", text: "→ verify_compression(in=1240, out=380, max=200)" },
+  { at: 443, kind: "in", text: "← ratio 30%   compliant: true" },
+  { at: 466, kind: "out", text: "→ settle(agent=0.10, refund=0.05)   one atomic call" },
+  { at: 492, kind: "ok", text: "  ✓ attested on-chain · unused budget returned" },
 ];
 
 const LINE_HEIGHT = 22;
 const FADE_FRAMES = 8;
+
+/*
+ * Lines are absolutely positioned, the terminal body clips what overflows, and
+ * only ~18 rows fit. Without this the last chapter — the settle, which is the
+ * whole point — was rendered below the fold and never seen. Once more lines
+ * than this are on screen, everything scrolls up by one row, like a real
+ * terminal.
+ */
+const MAX_VISIBLE_LINES = 17;
 
 function colorFor(kind: LineKind): string {
   switch (kind) {
@@ -67,6 +88,9 @@ export function DemoFlow() {
   const frame = useCurrentFrame();
   const cursorOn = Math.floor(frame / 15) % 2 === 0;
   const progress = (frame / DEMO_DURATION) * 100;
+
+  const shownCount = LINES.filter((l) => frame >= l.at).length;
+  const scrollOffset = Math.max(0, shownCount - MAX_VISIBLE_LINES) * LINE_HEIGHT;
 
   return (
     <AbsoluteFill
@@ -139,7 +163,7 @@ export function DemoFlow() {
                 key={i}
                 style={{
                   position: "absolute",
-                  top: 18 + i * LINE_HEIGHT,
+                  top: 18 + i * LINE_HEIGHT - scrollOffset,
                   left: 22,
                   right: 22,
                   fontSize: 13,
@@ -159,7 +183,7 @@ export function DemoFlow() {
           <div
             style={{
               position: "absolute",
-              top: 18 + LINES.filter((l) => frame >= l.at).length * LINE_HEIGHT,
+              top: 18 + shownCount * LINE_HEIGHT - scrollOffset,
               left: 22,
               fontSize: 13,
               color: C.text,
@@ -184,7 +208,7 @@ export function DemoFlow() {
             color: C.dim,
           }}
         >
-          <span>stellar:testnet</span>
+          <span>stellar:testnet · real endpoints · sample task id and tx hash</span>
           <span>{progress.toFixed(0)}%</span>
         </div>
       </div>
