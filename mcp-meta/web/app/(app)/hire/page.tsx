@@ -17,11 +17,15 @@ import {
   type UnsignedPayment,
   type ExecutionEvent,
 } from "@/lib/marketplace";
-import { connectWallet, signTransaction, assertWalletOnExpectedNetwork, getSavedWallet } from "@/lib/wallet";
+import { connectWallet, signTransaction, assertWalletOnExpectedNetwork } from "@/lib/wallet";
 import { getWalletAuthHeader } from "@/lib/wallet-auth";
 import { HORIZON_URL } from "@/lib/stellar-env";
 
-type Step = "input" | "discovering" | "agents" | "hiring" | "payment" | "network_mismatch" | "building_tx" | "signing" | "submitting" | "executing" | "settling" | "done" | "error";
+type Step = "input" | "discovering" | "agents" | "hiring" | "payment" | "network_mismatch" | "building_tx" | "confirming" | "signing" | "submitting" | "executing" | "settling" | "done" | "error";
+
+import { useI18n, type Key } from "@/lib/i18n";
+import { setActiveEscrow, updateEscrowStage } from "@/lib/active-escrow";
+import { SignConfirm, type SignDetails } from "@/components/sign-confirm";
 
 const EXPECTED_NETWORK = (process.env.NEXT_PUBLIC_STELLAR_NETWORK || "TESTNET").toUpperCase() === "PUBLIC" ? "Mainnet" : "Testnet";
 
@@ -49,7 +53,14 @@ function detectCapability(task: string): Capability | null {
   return null;
 }
 
-const STEPPER_STEPS = ["Describe", "Pick", "Pay", "Watch", "Done"] as const;
+/** The five steps, as dictionary keys. */
+const STEPPER_STEPS: Key[] = [
+  "hire.step.describe",
+  "hire.step.pick",
+  "hire.step.pay",
+  "hire.step.watch",
+  "hire.step.done",
+];
 
 /**
  * Translate a raw execution log message (emitted by the FastAPI backend) into
@@ -136,23 +147,24 @@ function stepperIndex(step: Step): number {
 }
 
 export default function HirePage() {
+  const { t } = useI18n();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [gateChecked, setGateChecked] = useState(false);
 
-  // Wallet gate. /hire is private — without a saved wallet we send the
-  // visitor back to the landing where the Connect CTA lives. The check
-  // runs only once on mount; downstream useEffects pick up the wallet
-  // from the same source after this passes.
+  // This screen used to run its own gate: no `wallet_public_key` in
+  // localStorage, back to the landing. Two problems with that. It asked a
+  // different source than the wall around it — the layout decides by the
+  // session cookie — so the two could disagree and send someone in circles.
+  // And localStorage is not a credential: it is the last wallet used.
+  //
+  // The gate is gone. Getting here at all means the session was verified on
+  // the server. All that is left is waiting for mount, because everything
+  // below reads browser storage.
   useEffect(() => {
     setMounted(true);
-    const saved = getSavedWallet();
-    if (!saved) {
-      router.replace("/");
-      return;
-    }
     setGateChecked(true);
-  }, [router]);
+  }, []);
 
   const [step, setStep] = useState<Step>("input");
   const [task, setTask] = useState("");
@@ -193,6 +205,14 @@ export default function HirePage() {
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
   const [unsignedTx, setUnsignedTx] = useState<UnsignedPayment | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
+  /**
+   * What the wallet is about to be asked to sign.
+   *
+   * Set before anything opens Freighter, cleared when the person decides.
+   * The point is that nobody should meet a signature request without having
+   * been told, in words, what it costs and what it authorises.
+   */
+  const [pendingSignature, setPendingSignature] = useState<SignDetails | null>(null);
   const [events, setEvents] = useState<ExecutionEvent[]>([]);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -320,6 +340,32 @@ export default function HirePage() {
       const tx = await buildPayment(selectedAgent.handle, amount, key);
       setUnsignedTx(tx);
 
+      // Say what is about to be signed, and wait for a yes.
+      //
+      // Freighter shows a transaction, which is accurate and unreadable. The
+      // numbers below are the ones actually going into it — `amount` is what
+      // `buildPayment` was called with — so this panel cannot drift from the
+      // transaction it describes.
+      setStep("confirming");
+      const confirmed = await new Promise<boolean>((resolve) => {
+        setPendingSignature({
+          agent: selectedAgent.handle,
+          amount,
+          estimated: paymentInfo?.estimated_cost ?? paymentInfo?.price ?? null,
+          network: paymentInfo?.network ?? EXPECTED_NETWORK,
+          payTo: paymentInfo?.payTo ?? "",
+          task,
+          resolve,
+        });
+      });
+      setPendingSignature(null);
+      if (!confirmed) {
+        // Back to the payment card with everything intact, so saying no
+        // costs nothing but the click.
+        setStep("payment");
+        return;
+      }
+
       // Sign via Freighter
       setStep("signing");
       const signedXdr = await signTransaction(tx.unsigned_xdr);
@@ -329,8 +375,18 @@ export default function HirePage() {
       const hire = await submitPayment(signedXdr, selectedAgent.handle, task, parseFloat(budget), tx.task_id);
       setTaskId(hire.task_id);
 
+      // From here the money is on the chain, so the bar starts following it.
+      setActiveEscrow({
+        taskId: hire.task_id,
+        agent: selectedAgent.handle,
+        amount,
+        stage: "locked",
+        startedAt: Date.now(),
+      });
+
       // Execute
       setStep("executing");
+      updateEscrowStage("working");
       setEvents([]);
       let walletAuth: string | undefined;
       try {
@@ -347,8 +403,10 @@ export default function HirePage() {
           try {
             const res = await getResult(hire.task_id, walletAuth);
             setResult(res);
+            updateEscrowStage("settled");
             setStep("done");
           } catch {
+            updateEscrowStage("settled");
             setStep("done");
           }
         },
@@ -357,7 +415,7 @@ export default function HirePage() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cancel") || msg.includes("reject") || msg.includes("User")) {
-        setError("Wallet signature cancelled. No payment was made.");
+        setError(t("hire.cancelled"));
       } else if (
         msg.includes("Contract, #10") ||
         msg.includes("balance is not within the allowed range") ||
@@ -392,13 +450,16 @@ export default function HirePage() {
   if (!mounted || !gateChecked) {
     return (
       <div className="max-w-3xl mx-auto py-8 text-center" style={{ color: "var(--dim)" }}>
-        Loading…
+        {t("hire.loading")}
       </div>
     );
   }
 
+  // Same container as every other screen. This used to declare 720px of its
+  // own inside a wider frame, which left the content visibly narrower than
+  // the navigation above it, and offset to one side.
   return (
-    <div style={{ maxWidth: step === "done" ? 1100 : 720, margin: "0 auto", padding: "0 24px" }}>
+    <div className="page">
       {showWelcome && (
         <div
           data-testid="welcome-banner"
@@ -425,11 +486,11 @@ export default function HirePage() {
                 background: "var(--green)",
               }}
             />
-            Welcome back. Your wallet is connected — you can hire anyone here without a second sign-in.
+            {t("hire.welcomeBack")}
           </span>
           <button
             type="button"
-            aria-label="Dismiss welcome"
+            aria-label={t("hire.dismissWelcome")}
             onClick={dismissWelcome}
             style={{
               background: "transparent",
@@ -461,7 +522,7 @@ export default function HirePage() {
             marginBottom: 16,
           }}
         >
-          ✱ pay only when the work ships
+          ✱ {t("hire.eyebrow")}
         </div>
         <h1
           className="hero-anim hero-anim-delay-1"
@@ -474,7 +535,7 @@ export default function HirePage() {
             lineHeight: 1.05,
           }}
         >
-          What do you
+          {t("hire.titleA")}
         </h1>
         <h1
           className="hero-anim hero-anim-delay-2 text-gradient"
@@ -488,7 +549,7 @@ export default function HirePage() {
             width: "fit-content",
           }}
         >
-          need done?
+          {t("hire.titleB")}
         </h1>
         <p
           className="hero-anim hero-anim-delay-3"
@@ -500,14 +561,36 @@ export default function HirePage() {
             marginBottom: 32,
           }}
         >
-          An AI agent will pick it up. You see the result first, then decide if
-          you pay.
+          {t("hire.intro")}
         </p>
 
-        {/* Stepper — visible on desktop only. Mobile prioritises content. */}
+        {/* Where you are in the flow.
+            It used to be `hidden md:flex`: on a phone the progress indicator
+            simply vanished, so the one screen with five steps was the one that
+            never said which step you were on. A phone gets the short form
+            ("Step 3 of 5 · Pay"); the full row returns at 640px. */}
         <div
-          className="hidden md:flex"
-          aria-label="Progress"
+          className="hire-stepper-compact"
+          aria-label={t("hire.progress")}
+          style={{
+            paddingTop: 8,
+            paddingBottom: 4,
+            borderTop: "1px solid var(--border)",
+            fontFamily: "var(--mono)",
+            fontSize: 11,
+            color: "var(--muted)",
+          }}
+        >
+          {t("hire.stepOf", { n: stepperIndex(step) + 1, total: STEPPER_STEPS.length })}
+          {" · "}
+          <span style={{ color: "var(--text)", fontWeight: 600 }}>
+            {t(STEPPER_STEPS[stepperIndex(step)])}
+          </span>
+        </div>
+
+        <div
+          className="hire-stepper-full"
+          aria-hidden="true"
           style={{
             alignItems: "center",
             gap: 8,
@@ -517,12 +600,12 @@ export default function HirePage() {
             paddingBottom: 4,
           }}
         >
-          {STEPPER_STEPS.map((label, i) => {
+          {STEPPER_STEPS.map((labelKey, i) => {
             const current = stepperIndex(step);
             const isPast = i < current;
             const isCurrent = i === current;
             return (
-              <div key={label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div key={labelKey} style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span
                   style={{
                     width: 6,
@@ -547,7 +630,7 @@ export default function HirePage() {
                     fontWeight: isCurrent ? 600 : 400,
                   }}
                 >
-                  {label}
+                  {t(labelKey)}
                 </span>
                 {i < STEPPER_STEPS.length - 1 && (
                   <span style={{ width: 24, height: 1, background: "var(--border)", marginLeft: 4 }} />
@@ -558,15 +641,22 @@ export default function HirePage() {
         </div>
       </section>
 
+      {pendingSignature && (
+        <SignConfirm
+          details={pendingSignature}
+          onDecide={(ok) => pendingSignature.resolve(ok)}
+        />
+      )}
+
       {/* Input form */}
       {step === "input" && (
         <section style={{ paddingBottom: 64 }}>
           <textarea
             value={task}
             onChange={(e) => setTask(e.target.value)}
-            placeholder="Type a task in your own words. Be specific about the format you want back."
+            placeholder={t("hire.taskPlaceholder")}
             rows={5}
-            aria-label="Task description"
+            aria-label={t("hire.taskLabel")}
             style={{
               width: "100%",
               minHeight: 140,
@@ -593,7 +683,7 @@ export default function HirePage() {
                 fontFamily: "var(--mono)",
               }}
             >
-              or click to start:
+              {t("hire.orClick")}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {EXAMPLE_PROMPTS.map((p) => (
@@ -647,7 +737,7 @@ export default function HirePage() {
               }}
             >
               <span aria-hidden="true">🪄</span>
-              Detected: {detectedCap} task
+              {t("hire.detected", { skill: detectedCap })}
             </div>
           )}
 
@@ -659,7 +749,7 @@ export default function HirePage() {
               className="btn-primary"
               style={{ fontSize: 14, padding: "12px 28px" }}
             >
-              Find an agent →
+              {t("hire.find")} →
             </button>
             <button
               type="button"
@@ -674,7 +764,7 @@ export default function HirePage() {
                 padding: "12px 8px",
               }}
             >
-              {showAdvanced ? "Hide" : "Advanced options"} {showAdvanced ? "▲" : "▼"}
+              {showAdvanced ? t("hire.advancedHide") : t("hire.advancedShow")} {showAdvanced ? "▲" : "▼"}
             </button>
           </div>
 
@@ -693,7 +783,7 @@ export default function HirePage() {
               }}
             >
               <div style={{ marginBottom: 16 }}>
-                <div className="field-label" style={{ marginBottom: 10 }}>Filter by skill</div>
+                <div className="field-label" style={{ marginBottom: 10 }}>{t("hire.filter")}</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {CAPABILITY_LIST.map((cap) => {
                     const active = selectedCaps.has(cap);
@@ -722,12 +812,12 @@ export default function HirePage() {
                   })}
                 </div>
                 <p style={{ fontSize: 11, color: "var(--dim)", marginTop: 8 }}>
-                  Leave empty to let the system pick based on the task text.
+                  {t("hire.filterHint")}
                 </p>
               </div>
 
               <div>
-                <label htmlFor="budget" className="field-label">Max budget (USDC)</label>
+                <label htmlFor="budget" className="field-label">{t("hire.maxBudget")}</label>
                 <input
                   id="budget"
                   type="number"
@@ -749,7 +839,7 @@ export default function HirePage() {
                   }}
                 />
                 <p style={{ fontSize: 11, color: "var(--dim)", marginTop: 6 }}>
-                  Hard ceiling on what you can spend. Unused budget refunds automatically.
+                  {t("hire.budgetHint")}
                 </p>
               </div>
             </div>
@@ -759,7 +849,7 @@ export default function HirePage() {
 
       {/* Discovering */}
       {step === "discovering" && (
-        <div className="text-sm py-8 text-center" style={{ color: "var(--dim)" }}>Querying on-chain registry...</div>
+        <div className="text-sm py-8 text-center" style={{ color: "var(--dim)" }}>{t("hire.discovering")}</div>
       )}
 
       {/* Agent list — rich cards. The first card is highlighted as "Best
@@ -775,7 +865,7 @@ export default function HirePage() {
               marginBottom: 6,
             }}
           >
-            Pick someone for the job
+            {t("hire.pickSomeone")}
           </h2>
           <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 24 }}>
             {agents.length === 0
@@ -789,7 +879,7 @@ export default function HirePage() {
                 background: "transparent", border: "none", color: "var(--accent)",
                 cursor: "pointer", fontSize: 14, textDecoration: "underline",
               }}>
-                Edit task and try again
+                {t("hire.editTask")}
               </button>
             </div>
           ) : (
@@ -838,7 +928,7 @@ export default function HirePage() {
                           borderRadius: "var(--radius-pill)",
                         }}
                       >
-                        ⭐ Best match
+                        ⭐ {t("hire.bestMatch")}
                       </span>
                     )}
 
@@ -921,7 +1011,7 @@ export default function HirePage() {
                   marginTop: 4,
                 }}
               >
-                ◀ Back to task
+                ◀ {t("hire.backToTask")}
               </button>
             </div>
           )}
@@ -946,7 +1036,7 @@ export default function HirePage() {
         }}>
           {selectedAgent && (
             <div style={{ fontSize: 12, fontFamily: "var(--mono)", color: "var(--dim)", marginBottom: 6 }}>
-              Paying {selectedAgent.handle}
+              {t("hire.paying", { agent: selectedAgent.handle })}
             </div>
           )}
           <h2 style={{
@@ -955,7 +1045,7 @@ export default function HirePage() {
             color: "var(--text)",
             marginBottom: 24,
           }}>
-            Confirm payment
+            {t("hire.confirmPayment")}
           </h2>
 
           {paymentInfo && (
@@ -963,19 +1053,19 @@ export default function HirePage() {
               {paymentInfo.estimated_cost ? (
                 <>
                   <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, color: "var(--muted)" }}>You'll pay up to</span>
+                    <span style={{ fontSize: 13, color: "var(--muted)" }}>{t("hire.youPayUpTo")}</span>
                     <span style={{ fontSize: 28, fontWeight: 700, fontFamily: "var(--mono)" }}>
                       {paymentInfo.budget_ceiling} <span style={{ fontSize: 14, color: "var(--muted)" }}>USDC</span>
                     </span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--dim)" }}>
-                    <span>Estimated actual cost</span>
+                    <span>{t("hire.estimatedCost")}</span>
                     <span style={{ fontFamily: "var(--mono)" }}>{paymentInfo.estimated_cost} USDC</span>
                   </div>
                   {paymentInfo.rate_breakdown && paymentInfo.rate_breakdown.length > 0 && (
                     <details style={{ marginTop: 14 }}>
                       <summary style={{ fontSize: 11, color: "var(--dim)", cursor: "pointer" }}>
-                        Show rate breakdown
+                        {t("hire.rateBreakdown")}
                       </summary>
                       <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 8, paddingLeft: 12 }}>
                         {paymentInfo.rate_breakdown.map((r, i) => (
@@ -987,7 +1077,7 @@ export default function HirePage() {
                 </>
               ) : (
                 <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-                  <span style={{ fontSize: 13, color: "var(--muted)" }}>Price</span>
+                  <span style={{ fontSize: 13, color: "var(--muted)" }}>{t("hire.price")}</span>
                   <span style={{ fontSize: 28, fontWeight: 700, fontFamily: "var(--mono)" }}>
                     {paymentInfo.price} <span style={{ fontSize: 14, color: "var(--muted)" }}>USDC</span>
                   </span>
@@ -1009,7 +1099,7 @@ export default function HirePage() {
             marginBottom: 24,
             lineHeight: 1.5,
           }}>
-            USDC sits in escrow. The agent gets paid only after the work is verified. Unused budget refunds back to you.
+            {t("hire.escrowNote")}
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -1018,7 +1108,7 @@ export default function HirePage() {
               className="btn-primary"
               style={{ fontSize: 14, padding: "12px 28px" }}
             >
-              {walletKey ? "Pay and execute →" : "Connect wallet and pay →"}
+              {walletKey ? `${t("hire.payAndExecute")} →` : `${t("hire.connectAndPay")} →`}
             </button>
             <button
               onClick={reset}
@@ -1033,7 +1123,7 @@ export default function HirePage() {
                 padding: 0,
               }}
             >
-              Cancel
+              {t("common.cancel")}
             </button>
           </div>
         </section>
@@ -1046,7 +1136,7 @@ export default function HirePage() {
           style={{ borderColor: "var(--amber, #f59e0b)" }}
         >
           <h2 className="text-sm font-medium mb-3" style={{ color: "var(--amber, #f59e0b)" }}>
-            Wrong network selected in your wallet
+            {t("hire.wrongNetwork")}
           </h2>
           <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
             Brújula runs on Stellar {EXPECTED_NETWORK}. Your wallet is on the
@@ -1057,12 +1147,12 @@ export default function HirePage() {
             className="text-sm mb-5"
             style={{ color: "var(--text)", paddingLeft: 20, lineHeight: 1.8 }}
           >
-            <li>Open the Freighter extension in your browser.</li>
-            <li>Click the network dropdown at the top of the popup.</li>
+            <li>{t("hire.networkStep1")}</li>
+            <li>{t("hire.networkStep2")}</li>
             <li>
-              Choose <strong>{EXPECTED_NETWORK}</strong>.
+              {t("hire.choose")} <strong>{EXPECTED_NETWORK}</strong>.
             </li>
-            <li>Come back here and click the button below.</li>
+            <li>{t("hire.networkStep3")}</li>
           </ol>
 
           <div className="flex gap-3">
@@ -1082,7 +1172,7 @@ export default function HirePage() {
               className="px-6 py-2 rounded-lg text-sm font-medium"
               style={{ background: "var(--text)", color: "var(--bg)" }}
             >
-              I switched. Try again.
+              {t("hire.networkRetry")}
             </button>
           </div>
         </div>
@@ -1090,11 +1180,11 @@ export default function HirePage() {
 
       {/* Progress states */}
       {step === "building_tx" && (
-        <div className="text-sm py-8 text-center" style={{ color: "var(--dim)" }}>Building Soroban transaction...</div>
+        <div className="text-sm py-8 text-center" style={{ color: "var(--dim)" }}>{t("hire.buildingTx")}</div>
       )}
       {step === "signing" && (
         <div className="text-sm py-8 text-center" style={{ color: "var(--dim)" }}>
-          Check your wallet. Approve the transaction in Freighter.
+          {t("hire.approveInWallet")}
           {unsignedTx && (
             <div className="mt-2 text-xs">
               {unsignedTx.amount_usdc} USDC → {unsignedTx.destination_label || "Escrow"}
@@ -1103,7 +1193,7 @@ export default function HirePage() {
         </div>
       )}
       {step === "submitting" && (
-        <div className="text-sm py-8 text-center" style={{ color: "var(--dim)" }}>Submitting to Stellar...</div>
+        <div className="text-sm py-8 text-center" style={{ color: "var(--dim)" }}>{t("hire.submitting")}</div>
       )}
 
       {/* Execution stream — each backend event is translated for end users.
@@ -1131,12 +1221,12 @@ export default function HirePage() {
                 animation: "pulse-dot 1.4s ease-in-out infinite",
               }}
             />
-            {step === "executing" ? "The agent is working" : "Finishing up"}
+            {step === "executing" ? t("hire.agentWorking") : t("hire.finishing")}
           </div>
           <p style={{ fontSize: 12, color: "var(--muted)", marginBottom: 14 }}>
             {step === "executing"
-              ? "It usually takes a few seconds."
-              : "Releasing the payment now."}
+              ? t("hire.takesSeconds")
+              : t("hire.releasingPayment")}
           </p>
           <div
             ref={eventsRef}
@@ -1188,7 +1278,7 @@ export default function HirePage() {
       {/* Done */}
       {step === "done" && (
         <div className="space-y-4">
-          <div className="font-medium" style={{ color: "var(--green)" }}>Task complete</div>
+          <div className="font-medium" style={{ color: "var(--green)" }}>{t("hire.complete")}</div>
 
           {result && (
             <>
@@ -1232,12 +1322,10 @@ export default function HirePage() {
                     <span aria-hidden="true" style={{ fontSize: 22, lineHeight: 1 }}>💭</span>
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 2 }}>
-                        The agent recognised this from a past run
+                        {t("hire.cached")}
                       </div>
                       <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>
-                        Some of this answer came from memory built up by your previous
-                        searches. That part was instant and didn't cost extra. The more
-                        you use Brújula, the smarter and cheaper each task gets.
+                        {t("hire.fromMemory")}
                       </div>
                     </div>
                   </div>
@@ -1272,10 +1360,10 @@ export default function HirePage() {
 
               {(result as any).settlement && (
                 <div className="border rounded-xl p-4" style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
-                  <div className="text-xs mb-2" style={{ color: "var(--dim)" }}>Settlement</div>
+                  <div className="text-xs mb-2" style={{ color: "var(--dim)" }}>{t("hire.settlement")}</div>
                   <div className="text-sm space-y-1">
                     <div className="flex justify-between">
-                      <span style={{ color: "var(--muted)" }}>Actual cost</span>
+                      <span style={{ color: "var(--muted)" }}>{t("hire.actualCost")}</span>
                       <span className="font-mono">
                         {(result as any).settlement.actual_cost_usdc || (result as any).settlement.total_cost_usdc} USDC
                       </span>
@@ -1305,7 +1393,7 @@ export default function HirePage() {
           )}
 
           <button onClick={reset} className="px-6 py-2 rounded-lg text-sm font-medium" style={{ background: "var(--text)", color: "var(--bg)" }}>
-            New Task
+            {t("hire.newTask")}
           </button>
         </div>
       )}
@@ -1315,7 +1403,7 @@ export default function HirePage() {
         <div className="text-center py-8">
           <div className="text-sm mb-4" style={{ color: "#ef4444" }}>{error}</div>
           <button onClick={reset} className="px-4 py-2 rounded-lg text-sm" style={{ background: "var(--text)", color: "var(--bg)" }}>
-            Try Again
+            {t("hire.tryAgain")}
           </button>
         </div>
       )}

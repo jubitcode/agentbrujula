@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as d3 from "d3";
 import { authHeaders } from "@/lib/api";
+import { useI18n, type Key } from "@/lib/i18n";
+import { EmptyState, ErrorState, Loading, resolveState } from "@/components/ui/states";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5050";
 
@@ -42,7 +44,16 @@ const NODE_COLORS: Record<string, string> = {
   concept: "#8b5cf6",
 };
 
+/** Node types, in the order the legend shows them. */
+const TYPE_LABELS: Record<string, Key> = {
+  fact: "knowledge.type.fact",
+  finding: "knowledge.type.finding",
+  episode: "knowledge.type.episode",
+  concept: "knowledge.type.concept",
+};
+
 export default function KnowledgePage() {
+  const { t } = useI18n();
   const svgRef = useRef<SVGSVGElement>(null);
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -188,80 +199,119 @@ export default function KnowledgePage() {
     return () => { simulation.stop(); };
   }, [graphData]);
 
+  // Exactly one state, decided in one place.
+  //
+  // Before this the page could show three at once: the subtitle read
+  // `graphData ? ... : "Loading..."`, which never leaves "Loading..." when the
+  // request fails because `graphData` stays null; the error box rendered on
+  // its own condition; and the 500px canvas rendered unconditionally
+  // underneath both. A visitor saw a graph that was loading, had failed, and
+  // was empty, all at the same time.
+  //
+  // The request itself is untouched. `unauthorized: missing API key` still
+  // happens — it is kept, as the machine's own words, under a sentence a
+  // person can read.
+  const state = resolveState({
+    loading,
+    error,
+    empty: !!graphData && graphData.nodes.length === 0,
+  });
+
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="flex items-center justify-between mb-4">
+    <div className="page">
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: 12,
+          marginBottom: 16,
+        }}
+      >
         <div>
-          <h1 className="text-xl font-medium" style={{ color: "var(--text)" }}>Knowledge Graph</h1>
-          <p className="text-sm" style={{ color: "var(--dim)" }}>
-            {graphData
-              ? `${graphData.total_nodes} nodes · ${graphData.total_edges} edges`
-              : "Loading..."}
+          <h1 className="t-h2" style={{ marginBottom: 4 }}>{t("knowledge.title")}</h1>
+          <p className="t-small" style={{ margin: 0 }}>
+            {state === "ready" && graphData
+              ? t("knowledge.subtitle", {
+                  nodes: graphData.total_nodes,
+                  edges: graphData.total_edges,
+                })
+              : state === "loading"
+                ? t("common.loading")
+                : "\u00a0"}
           </p>
         </div>
-        <button
-          onClick={fetchGraph}
-          className="text-xs border rounded-lg px-3 py-2 transition-colors"
-          style={{ color: "var(--muted)", borderColor: "var(--border)" }}
-        >
-          Refresh
+        <button className="btn-ghost btn-sm btn-inline" onClick={fetchGraph} disabled={loading}>
+          {t("knowledge.refresh")}
         </button>
       </div>
 
-      {/* Legend */}
-      <div className="flex gap-4 mb-4">
-        {Object.entries(NODE_COLORS).map(([type, color]) => (
-          <div key={type} className="flex items-center gap-1 text-xs" style={{ color: "var(--muted)" }}>
-            <span className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
-            {type}
+      {/* The legend describes the canvas, so it only belongs on screen when
+          there is a canvas. It used to sit above an error box explaining the
+          colours of a graph that had failed to load. */}
+      {state === "ready" && (
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 14, marginBottom: 16 }}>
+          {Object.entries(NODE_COLORS).map(([type, color]) => (
+            <div key={type} className="t-small" style={{ display: "flex", alignItems: "center", gap: 6, margin: 0 }}>
+              <span style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: color }} aria-hidden="true" />
+              {TYPE_LABELS[type] ? t(TYPE_LABELS[type]) : type}
+            </div>
+          ))}
+          <div className="t-small" style={{ marginLeft: "auto", color: "var(--dim)", margin: 0 }}>
+            {t("knowledge.legendNote")}
           </div>
-        ))}
-        <div className="text-xs ml-auto" style={{ color: "var(--dim)" }}>
-          Node size = importance · Edge thickness = Hebbian weight
-        </div>
-      </div>
-
-      {error && (
-        <div className="rounded-xl p-4 text-sm mb-4" style={{ background: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.2)", color: "#ef4444" }}>
-          {error}
         </div>
       )}
 
-      {loading && !graphData && (
-        <div className="border rounded-xl p-12 text-center" style={{ background: "var(--surface)", borderColor: "var(--border)", color: "var(--dim)" }}>
-          Loading knowledge graph...
+      {state === "loading" && <Loading title={t("knowledge.loading")} />}
+
+      {state === "error" && (
+        <ErrorState
+          title={t("knowledge.error")}
+          detail={error}
+          onRetry={fetchGraph}
+        />
+      )}
+
+      {state === "empty" && (
+        <EmptyState title={t("knowledge.empty")} hint={t("knowledge.emptyHint")} />
+      )}
+
+      {/* The canvas, only when there is something to draw on it. A 500px
+          empty rectangle is not a graph; it is a hole in the page. */}
+      {state === "ready" && (
+        <div
+          className="card"
+          style={{ padding: 0, overflow: "hidden", height: "clamp(320px, 60vh, 520px)" }}
+        >
+          <svg ref={svgRef} width="100%" height="100%" />
         </div>
       )}
 
-      {graphData && graphData.nodes.length === 0 && (
-        <div className="border rounded-xl p-12 text-center" style={{ background: "var(--surface)", borderColor: "var(--border)", color: "var(--dim)" }}>
-          No knowledge yet. Use the research agent or store findings to build the graph.
-        </div>
-      )}
-
-      {/* Graph */}
-      <div className="border rounded-xl overflow-hidden" style={{ height: "500px", background: "var(--surface)", borderColor: "var(--border)" }}>
-        <svg ref={svgRef} width="100%" height="100%" />
-      </div>
-
-      {/* Selected node detail */}
-      {selectedNode && (
-        <div className="mt-4 border rounded-xl p-4" style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="font-medium" style={{ color: "var(--text)" }}>{selectedNode.label}</h3>
+      {state === "ready" && selectedNode && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 8 }}>
+            <h2 className="t-h3 t-wrap" style={{ margin: 0 }}>{selectedNode.label}</h2>
             <button
               onClick={() => setSelectedNode(null)}
-              className="text-xs"
-              style={{ color: "var(--dim)" }}
+              aria-label={t("common.close")}
+              style={{ background: "none", border: "none", color: "var(--dim)", cursor: "pointer", fontSize: 14, flexShrink: 0 }}
             >
               ✕
             </button>
           </div>
-          <p className="text-sm mb-2" style={{ color: "var(--muted)" }}>{selectedNode.content}</p>
-          <div className="flex gap-4 text-xs" style={{ color: "var(--dim)" }}>
-            <span>Type: {selectedNode.type}</span>
-            <span>Importance: {selectedNode.importance}</span>
-            <span>Accessed: {selectedNode.access_count}x</span>
+          <p className="t-small t-wrap" style={{ marginBottom: 10 }}>{selectedNode.content}</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+            <span className="t-small" style={{ color: "var(--dim)", margin: 0 }}>
+              {t("knowledge.nodeType")}: {TYPE_LABELS[selectedNode.type] ? t(TYPE_LABELS[selectedNode.type]) : selectedNode.type}
+            </span>
+            <span className="t-small" style={{ color: "var(--dim)", margin: 0 }}>
+              {t("knowledge.nodeImportance")}: {selectedNode.importance}
+            </span>
+            <span className="t-small" style={{ color: "var(--dim)", margin: 0 }}>
+              {t("knowledge.nodeAccessed")}: {t("knowledge.nodeAccessedTimes", { n: selectedNode.access_count })}
+            </span>
           </div>
         </div>
       )}

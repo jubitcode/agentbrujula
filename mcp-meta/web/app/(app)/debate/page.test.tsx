@@ -3,6 +3,7 @@
  */
 
 import { render, screen } from "@testing-library/react";
+import { es } from "@/lib/i18n/es";
 
 jest.mock("@/lib/marketplace", () => ({
   hireAgent: jest.fn(),
@@ -43,8 +44,10 @@ beforeEach(() => {
 describe("DebatePage", () => {
   test("renders heading and input", () => {
     render(<DebatePage />);
-    expect(screen.getByText("Architecture Debate")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/architecture decision/i)).toBeInTheDocument();
+    expect(screen.getByText(es["debate.title"] as string)).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText(es["debate.placeholder"] as string),
+    ).toBeInTheDocument();
   });
 
   test("renders example buttons", () => {

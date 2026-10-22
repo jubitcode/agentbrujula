@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Markdown from "react-markdown";
 import { InputBar } from "@/components/input-bar";
+import { ErrorState } from "@/components/ui/states";
 import {
   hireAgent,
   buildPayment,
@@ -17,6 +18,7 @@ import {
 import { connectWallet, signTransaction } from "@/lib/wallet";
 import { getWalletAuthHeader } from "@/lib/wallet-auth";
 import { HORIZON_URL } from "@/lib/stellar-env";
+import { useI18n } from "@/lib/i18n";
 
 function stripCodeFences(text: string): string {
   // Remove ```markdown ... ``` wrappers that LLMs add
@@ -36,9 +38,10 @@ const AGENT_COLORS: Record<string, { border: string; bg: string }> = {
   skeptic: { border: "rgba(245,158,11,0.3)", bg: "rgba(245,158,11,0.08)" },
 };
 
-const AGENT_LABELS: Record<string, string> = {
-  advocate: "Advocate",
-  skeptic: "Skeptic",
+/** Keys, resolved at render. Two agents, which is what actually runs. */
+const AGENT_LABELS: Record<string, "debate.advocate" | "debate.skeptic"> = {
+  advocate: "debate.advocate",
+  skeptic: "debate.skeptic",
 };
 
 const EXAMPLES = [
@@ -48,6 +51,7 @@ const EXAMPLES = [
 ];
 
 export default function DebatePage() {
+  const { t } = useI18n();
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState("");
@@ -76,7 +80,7 @@ export default function DebatePage() {
         return;
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to request debate");
+      setError(err instanceof Error ? err.message : t("debate.failed"));
     } finally {
       if (!paymentInfo) {
         setLoading(false);
@@ -171,7 +175,7 @@ export default function DebatePage() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("cancel") || msg.includes("reject") || msg.includes("User")) {
-        setError("Wallet signature cancelled. No payment was made.");
+        setError(t("debate.cancelled"));
       } else {
         setError(msg);
       }
@@ -182,17 +186,13 @@ export default function DebatePage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto">
-      <h1 className="text-xl font-medium mb-2" style={{ color: "var(--text)" }}>Architecture Debate</h1>
-      <p className="text-sm mb-6" style={{ color: "var(--dim)" }}>
-        Four independent agents debate your architecture decision. Each has isolated reasoning — they only see what the other said, not how they thought.
-      </p>
+    <div className="page">
+      <h1 className="t-h2">{t("debate.title")}</h1>
+      {/* Said "four independent agents"; two run. Adjusted to what it does. */}
+      <p className="t-intro" style={{ marginBottom: 24 }}>{t("debate.intro")}</p>
 
-      <div className="mb-6">
-        <InputBar
-          onSubmit={runDebate}
-          placeholder="Describe your architecture decision..."
-        />
+      <div style={{ marginBottom: 24 }}>
+        <InputBar onSubmit={runDebate} placeholder={t("debate.placeholder")} />
       </div>
 
       <div className="flex gap-2 mb-8 flex-wrap">
@@ -201,10 +201,10 @@ export default function DebatePage() {
             key={ex}
             onClick={() => runDebate(ex)}
             disabled={loading}
-            className="text-xs rounded-full px-3 py-1 border transition-colors disabled:opacity-50"
-            style={{ color: "var(--dim)", borderColor: "var(--border)" }}
+            className="chip t-wrap"
+            style={{ whiteSpace: "normal", textAlign: "left", maxWidth: "100%" }}
           >
-            {ex.slice(0, 50)}...
+            {ex.slice(0, 50)}…
           </button>
         ))}
       </div>
@@ -212,41 +212,39 @@ export default function DebatePage() {
       {/* Payment required */}
       {paymentInfo && !loading && !result && (
         <div className="rounded-xl p-6 mb-6 border" style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
-          <h2 className="text-sm font-medium mb-4" style={{ color: "var(--muted)" }}>Payment Required</h2>
+          <h2 className="field-label">{t("debate.paymentTitle")}</h2>
           <div className="space-y-3 mb-6">
             <div className="flex justify-between">
-              <span className="text-sm" style={{ color: "var(--muted)" }}>Estimated cost</span>
+              <span className="text-sm" style={{ color: "var(--muted)" }}>{t("debate.estimated")}</span>
               <span className="text-lg font-semibold">
                 {paymentInfo.estimated_cost || paymentInfo.price} USDC
               </span>
             </div>
             {paymentInfo.budget_ceiling && (
               <div className="flex justify-between">
-                <span className="text-sm" style={{ color: "var(--muted)" }}>Budget lock</span>
+                <span className="text-sm" style={{ color: "var(--muted)" }}>{t("debate.budgetLock")}</span>
                 <span className="text-sm font-mono">{paymentInfo.budget_ceiling} USDC</span>
               </div>
             )}
             <div className="text-xs" style={{ color: "var(--dim)" }}>
-              Network: {paymentInfo.network} · Escrow: {paymentInfo.payTo.slice(0, 8)}...{paymentInfo.payTo.slice(-4)}
+              {t("debate.network")}: {paymentInfo.network} · {t("debate.escrow")}: {paymentInfo.payTo.slice(0, 8)}…{paymentInfo.payTo.slice(-4)}
             </div>
           </div>
           <div className="rounded-lg p-3 text-xs mb-4" style={{ background: "rgba(59,130,246,0.08)", borderColor: "rgba(59,130,246,0.3)", color: "var(--accent)" }}>
-            USDC locked in escrow. Refunded if execution fails.
+            {t("debate.escrowNote")}
           </div>
           <div className="flex gap-3">
             <button
               onClick={() => { setPaymentInfo(null); setQuestion(""); }}
-              className="px-4 py-2 border rounded-lg text-sm"
-              style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+              className="btn-ghost btn-sm btn-inline"
             >
-              Cancel
+              {t("common.cancel")}
             </button>
             <button
               onClick={payAndExecute}
-              className="px-6 py-2 rounded-lg text-sm font-medium"
-              style={{ background: "var(--text)", color: "var(--bg)" }}
+              className="btn-primary btn-inline"
             >
-              {walletKey ? "Pay and run debate" : "Connect wallet and pay"}
+              {walletKey ? t("debate.pay") : t("debate.connectAndPay")}
             </button>
           </div>
         </div>
@@ -254,22 +252,23 @@ export default function DebatePage() {
 
       {/* Loading state */}
       {loading && (
-        <div className="rounded-xl p-6 border" style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
-          <div className="flex items-center gap-3">
-            <span className="animate-pulse text-lg" style={{ color: "var(--accent)" }}>●</span>
-            <span style={{ color: "var(--muted)" }}>{currentStep || "Agents are debating..."}</span>
+        <div className="card">
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span className="spinner" aria-hidden="true" />
+            <span className="t-body" style={{ color: "var(--accent)" }}>
+              {currentStep || t("debate.running")}
+            </span>
           </div>
-          <p className="text-xs mt-2" style={{ color: "var(--dim)" }}>
-            This takes 30-60 seconds — 4 agents making 6+ LLM calls
+          <p className="t-small" style={{ color: "var(--dim)", margin: "8px 0 0" }}>
+            {t("debate.waitHint")}
           </p>
         </div>
       )}
 
-      {/* Error */}
-      {error && (
-        <div className="rounded-xl p-4 text-sm" style={{ background: "rgba(239,68,68,0.08)", borderColor: "rgba(239,68,68,0.2)", color: "#ef4444" }}>
-          {error}
-        </div>
+      {/* Error. Exclusive with the loading block above by construction:
+          `runDebate` clears one before setting the other. */}
+      {error && !loading && (
+        <ErrorState title={t("debate.failed")} detail={error} />
       )}
 
       {/* Result */}
@@ -277,12 +276,12 @@ export default function DebatePage() {
         <div>
           {/* Stats bar */}
           <div className="flex items-center gap-4 mb-4 text-xs" style={{ color: "var(--dim)" }}>
-            {result.rounds && <><span>{result.rounds} rounds</span><span>·</span></>}
+            {result.rounds && <><span>{t("debate.rounds", { n: result.rounds })}</span><span>·</span></>}
             {result.concession_detected != null && (
-              <><span>{result.concession_detected ? "Concession reached" : "Max rounds"}</span><span>·</span></>
+              <><span>{result.concession_detected ? t("debate.concession") : t("debate.maxRounds")}</span><span>·</span></>
             )}
             {result.cost?.total_tokens_in != null && (
-              <span>{(result.cost.total_tokens_in || 0) + (result.cost.total_tokens_out || 0)} tokens</span>
+              <span>{t("debate.tokens", { n: (result.cost.total_tokens_in || 0) + (result.cost.total_tokens_out || 0) })}</span>
             )}
             {result.cost?.estimated_cost_usd != null && (
               <><span>·</span><span>${result.cost.estimated_cost_usd.toFixed(4)}</span></>
@@ -332,7 +331,7 @@ export default function DebatePage() {
                   >
                     <div className="flex items-center gap-2 mb-2">
                       <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: "var(--muted)" }}>
-                        {AGENT_LABELS[turn.agent] || turn.agent}
+                        {AGENT_LABELS[turn.agent] ? t(AGENT_LABELS[turn.agent]) : turn.agent}
                       </span>
                       <span className="text-xs" style={{ color: "var(--dim)" }}>Round {turn.round}</span>
                     </div>
@@ -411,10 +410,10 @@ export default function DebatePage() {
           <div className="mt-6 pt-4 space-y-2" style={{ borderTop: "1px solid var(--border)" }}>
             {result._settlement && (
               <div className="rounded-xl p-4 border" style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
-                <div className="text-xs mb-2" style={{ color: "var(--dim)" }}>Settlement</div>
+                <div className="field-label">{t("debate.settlement")}</div>
                 <div className="text-sm space-y-1">
                   <div className="flex justify-between">
-                    <span style={{ color: "var(--muted)" }}>Actual cost</span>
+                    <span style={{ color: "var(--muted)" }}>{t("debate.actualCost")}</span>
                     <span className="font-mono">{result._settlement.actual_cost_usdc} USDC</span>
                   </div>
                   <div className="text-xs font-mono" style={{ color: "var(--dim)" }}>

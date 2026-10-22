@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { es } from "@/lib/i18n/es";
 
 jest.mock("@/lib/api", () => ({
   getAgentCard: jest.fn(),
@@ -35,7 +36,8 @@ describe("Explore page", () => {
     } as any);
 
     render(<ExplorePage />);
-    expect(screen.getByText(/what can/i)).toBeInTheDocument();
+    // From the dictionary: the heading is Spanish by default now.
+    expect(screen.getByText(es["explore.title"] as string)).toBeInTheDocument();
   });
 
   test("renders skills when loaded", async () => {
@@ -111,7 +113,7 @@ describe("Explore page", () => {
     render(<ExplorePage />);
 
     await waitFor(() => {
-      expect(screen.getByText(/no skills/i)).toBeInTheDocument();
+      expect(screen.getByText(es["explore.empty"] as string)).toBeInTheDocument();
     });
   });
 });
