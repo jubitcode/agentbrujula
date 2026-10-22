@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getSavedWallet, connectWallet } from "@/lib/wallet";
+import { getSessionAddress } from "@/lib/account";
 import { getAgentCard } from "@/lib/api";
 import { NeuralCanvas } from "@/components/neural-bg/NeuralCanvas";
+import { BrujulaWordmark } from "@/components/logo/BrujulaWordmark";
 import { CompassScroll } from "@/components/compass/CompassScroll";
 
 const STATIC_AGENTS = [
@@ -45,37 +46,57 @@ const ONCHAIN_CONTRACTS = [
 
 export default function HomePage() {
   const router = useRouter();
-  const [walletKey, setWalletKey] = useState<string | null>(null);
+  const [signedIn, setSignedIn] = useState(false);
   const [skillCount, setSkillCount] = useState(0);
 
+  /**
+   * The landing never redirects.
+   *
+   * It used to: if `localStorage` held a wallet address it replaced itself
+   * with the app. Two things were wrong with that. The small one is that a
+   * public page you cannot look at while signed in is a page you cannot
+   * show anyone. The large one is that signing out left that key behind, so
+   * the landing bounced you to the app, the app bounced you to sign-up, and
+   * the way back here bounced you again — a loop with no exit.
+   *
+   * Now it only *asks* whether there is a session, and the question goes to
+   * the cookie, which is the one thing that actually governs access.
+   */
   useEffect(() => {
-    const saved = getSavedWallet();
-    setWalletKey(saved);
-    // If the user already has a wallet, the landing has nothing left to
-    // teach them — send them to the product. This mirrors the auth-aware
-    // logo behaviour in the header.
-    if (saved) {
-      router.replace("/hire");
-      return;
-    }
-    getAgentCard().then((c) => setSkillCount(c.skills?.length || 0)).catch(() => {});
-  }, [router]);
+    let cancelled = false;
+    getSessionAddress()
+      .then((address) => !cancelled && setSignedIn(!!address))
+      .catch(() => {});
+    getAgentCard().then((c) => !cancelled && setSkillCount(c.skills?.length || 0)).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const handleConnect = async () => {
-    try {
-      const { publicKey } = await connectWallet();
-      setWalletKey(publicKey);
-      // The landing is for prospects. Once they have a wallet they should
-      // move into the workspace immediately.
-      router.push("/hire");
-    } catch {
-      /* user cancelled */
-    }
+  /**
+   * Hand over to the right door.
+   *
+   * This used to call `connectWallet()` and push straight to /hire.
+   * Connecting only reads an address, which proves nothing — the account is
+   * created by *signing* a challenge. Someone already signed in goes to the
+   * app; everyone else goes to sign in.
+   */
+  const handleConnect = () => {
+    router.push(signedIn ? "/agentes" : "/login");
   };
 
   return (
     <>
       <NeuralCanvas />
+
+      {/* The root layout stopped carrying a header when the app grew a
+          sidebar of its own, so the landing supplies its own wordmark.
+          Nothing more: this page is written in English and has its own
+          calls to action — a Spanish "Entrar" button sitting above an
+          English hero reads worse than no button at all. */}
+      <header className="app-topbar" style={{ position: "relative", zIndex: 2, background: "transparent" }}>
+        <BrujulaWordmark height={24} />
+      </header>
 
       <div style={{ position: "relative", zIndex: 1, maxWidth: 900, margin: "0 auto", padding: "0 24px" }}>
         {/* HERO — two columns on desktop, the compass anchored on the right
@@ -158,7 +179,7 @@ export default function HomePage() {
                 className="btn-primary"
                 style={{ fontSize: 14, padding: "14px 36px" }}
               >
-                Connect wallet to start
+                {signedIn ? "Go to the app" : "Connect wallet to start"}
               </button>
               {/* Secondary: in-page scroll to the flow explanation. Gives
                   a curious visitor an out without dropping the primary
@@ -407,7 +428,7 @@ export default function HomePage() {
 
           <div style={{ textAlign: "center", marginTop: 28 }}>
             <Link
-              href="/hire"
+              href="/agentes"
               style={{
                 fontSize: 13,
                 fontFamily: "var(--mono)",
