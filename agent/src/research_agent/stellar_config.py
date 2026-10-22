@@ -1,4 +1,5 @@
 import os
+from functools import lru_cache
 
 from stellar_sdk import Network
 
@@ -36,6 +37,34 @@ TOOL_REGISTRY_CONTRACT_ID = os.getenv(
 COMPLIANCE_CONTRACT_ID = os.getenv("COMPLIANCE_CONTRACT_ID", _DEFAULT_COMPLIANCE)
 USDC_TOKEN_ID = os.getenv("X402_USDC_ADDRESS", _DEFAULT_USDC)
 ESCROW_CONTRACT_ID = os.getenv("X402_ESCROW_CONTRACT", _DEFAULT_ESCROW)
+
+
+@lru_cache(maxsize=4)
+def get_soroban_server(rpc_url: str | None = None):
+    """Return a shared SorobanServer for `rpc_url`, creating it once.
+
+    Each SorobanServer owns an HTTP client and therefore its own connection
+    pool. Constructing one per call — which is what the code used to do, at a
+    dozen call sites — throws the connection away every time and pays the full
+    setup cost on every request.
+
+    That cost is not theoretical. Measured on a developer machine, 2026-10-20:
+    the first call through a fresh server took **13.6 s** and the second,
+    through the same one, took **0.28 s**. `soroban-testnet.stellar.org`
+    publishes four IPv6 addresses alongside its IPv4 ones, and where IPv6 is
+    present but degraded each attempt burns a connect timeout (~3 s here)
+    before anything falls back to IPv4, which connects in 0.03 s. Reusing the
+    server skips all of that after the first call.
+
+    Thread-safe by way of httpx.Client, which is safe to share across threads —
+    which matters because FastAPI runs synchronous endpoints in a threadpool.
+
+    Cached by URL so tests can point at a different RPC without clobbering the
+    process-wide instance.
+    """
+    from stellar_sdk import SorobanServer
+
+    return SorobanServer(rpc_url or RPC_URL)
 
 
 def require_contract_id(name: str, value: str | None) -> str:

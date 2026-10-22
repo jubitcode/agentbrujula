@@ -16,7 +16,12 @@ from stellar_sdk import (
 )
 from stellar_sdk import xdr as stellar_xdr
 
-from .stellar_config import NETWORK_PASSPHRASE, HORIZON_URL, RPC_URL
+from .stellar_config import (
+    NETWORK_PASSPHRASE,
+    HORIZON_URL,
+    RPC_URL,
+    get_soroban_server,
+)
 from .x402_config import X402_ESCROW_CONTRACT
 
 
@@ -200,7 +205,7 @@ def _build_unsigned_escrow_invoke(
     rpc_url = rpc_url or RPC_URL
     escrow_contract = escrow_contract or X402_ESCROW_CONTRACT
 
-    server = SorobanServer(rpc_url)
+    server = get_soroban_server(rpc_url)
     source_account = server.load_account(source_public)
 
     builder = TransactionBuilder(
@@ -235,7 +240,7 @@ def submit_signed_xdr(signed_xdr: str, rpc_url: str | None = None) -> str:
     from stellar_sdk import TransactionEnvelope
 
     rpc_url = rpc_url or RPC_URL
-    server = SorobanServer(rpc_url)
+    server = get_soroban_server(rpc_url)
     envelope = TransactionEnvelope.from_xdr(signed_xdr, NETWORK_PASSPHRASE)
     resp = server.send_transaction(envelope)
     return resp.hash
@@ -270,7 +275,7 @@ def _submit_escrow_invoke(
     rpc_url = rpc_url or RPC_URL
     escrow_contract = escrow_contract or X402_ESCROW_CONTRACT
 
-    server = SorobanServer(rpc_url)
+    server = get_soroban_server(rpc_url)
     source_account = server.load_account(orchestrator_kp.public_key)
 
     builder = TransactionBuilder(
@@ -387,20 +392,70 @@ def refund_escrow(
     return _submit_escrow_invoke(orchestrator_kp, "refund_to_client", params, **kwargs)
 
 
+# One stroop is 1e-7 of a unit, for USDC as for XLM.
+STROOPS_PER_UNIT = 10_000_000
+
+# Mirrors `EscrowStatus` in contracts/usdc-escrow/src/lib.rs. Declared here so a
+# caller can branch on the value without importing the contract spec; if the
+# contract gains a variant, add it here too.
+ESCROW_STATUSES = ("Created", "Released", "Refunded", "Settled")
+
+
+def _parse_escrow_entry(task_id: str, result_xdr: str) -> dict[str, Any]:
+    """Decode the SCVal `get_escrow` returns into plain Python values.
+
+    The shape mirrors `EscrowEntry` in contracts/usdc-escrow/src/lib.rs:
+    client and agent are Addresses, amount is an i128 in stroops, deadline is a
+    u64 unix timestamp, and status is a unit enum. Soroban serialises the struct
+    as a map keyed by field name, so the field order here does not matter.
+
+    A decode failure is reported rather than raised: a caller asking for escrow
+    state should not get an exception because the contract's shape moved.
+    """
+    out: dict[str, Any] = {"task_id": task_id, "status": "found", "raw_xdr": result_xdr}
+    try:
+        fields = scval.from_struct(stellar_xdr.SCVal.from_xdr(result_xdr))
+
+        amount_stroops = scval.from_int128(fields["amount"])
+        status_name, _ = scval.from_enum(fields["status"])
+
+        out.update(
+            {
+                "escrow_status": status_name,
+                "client": scval.from_address(fields["client"]).address,
+                "agent": scval.from_address(fields["agent"]).address,
+                "amount_stroops": amount_stroops,
+                "amount": f"{amount_stroops / STROOPS_PER_UNIT:.7f}",
+                "deadline": scval.from_uint64(fields["deadline"]),
+            }
+        )
+    except Exception as exc:  # noqa: BLE001 — surface, don't raise
+        out["parse_error"] = f"{type(exc).__name__}: {exc}"
+    return out
+
+
 def get_escrow_status(
     task_id: str,
     rpc_url: str | None = None,
     escrow_contract: str | None = None,
 ) -> dict:
-    """Read escrow entry from the Soroban contract (read-only simulate, no signing).
+    """Read an escrow entry from the Soroban contract.
 
-    Returns a dict with keys: task_id, status, amount, deadline, client, agent.
-    Returns None if escrow not found.
+    Read-only: builds an unsigned transaction and simulates it, so nothing is
+    submitted and no key is needed.
+
+    On success returns `status="found"` plus the decoded entry — `escrow_status`
+    (Created / Released / Refunded / Settled), `client`, `agent`,
+    `amount_stroops`, `amount` (as a decimal string) and `deadline` (unix) —
+    along with the `raw_xdr` it came from.
+
+    Returns `status="not_found"` when there is no entry for the task, which also
+    covers an entry whose TTL expired and was evicted.
     """
     rpc_url = rpc_url or RPC_URL
     escrow_contract = escrow_contract or X402_ESCROW_CONTRACT
 
-    server = SorobanServer(rpc_url)
+    server = get_soroban_server(rpc_url)
 
     # Build a read-only transaction (any valid account works as source)
     # Use a zero-account since we only simulate, never submit
@@ -423,14 +478,16 @@ def get_escrow_status(
 
     sim = server.simulate_transaction(tx)
     if sim.error:
+        # `get_escrow` ends in `.expect("escrow not found")`, so it traps rather
+        # than returning an Option when there is no entry. A trap here is the
+        # ordinary "no such escrow" answer — and it is also what an entry whose
+        # TTL ran out looks like, because Soroban evicts expired persistent data.
         return {"task_id": task_id, "status": "not_found", "error": str(sim.error)}
 
-    # Parse the result — returns raw XDR for now
-    # Full parsing requires matching the EscrowEntry struct from the contract
-    if sim.results and len(sim.results) > 0:
-        return {"task_id": task_id, "status": "found", "raw_xdr": sim.results[0].xdr}
+    if not sim.results:
+        return {"task_id": task_id, "status": "not_found"}
 
-    return {"task_id": task_id, "status": "not_found"}
+    return _parse_escrow_entry(task_id, sim.results[0].xdr)
 
 
 def build_escrow_tx(
@@ -450,7 +507,7 @@ def build_escrow_tx(
     rpc_url = rpc_url or RPC_URL
     escrow_contract = escrow_contract or X402_ESCROW_CONTRACT
 
-    server = SorobanServer(rpc_url)
+    server = get_soroban_server(rpc_url)
     source_account = server.load_account(client_public)
 
     builder = TransactionBuilder(

@@ -60,18 +60,76 @@ async def _call_facilitator_verify(
         return resp.json()
 
 
+def _transfer_to_recipient(
+    op: dict, pay_to: str, expected_amount: float, expected_asset: str
+) -> dict | None:
+    """Find a settled transfer to `pay_to` inside one operation.
+
+    Horizon reports what a Soroban invocation actually moved in
+    `asset_balance_changes`: the asset, the amount, and both ends of the
+    transfer. That record is produced from the transaction's own result, so it
+    is the right place to read an amount from — unlike the request body, which
+    the payer controls.
+
+    Handles both shapes the escrow flow produces:
+      - `invoke_host_function` (type_i 24), where USDC moves into the escrow
+        contract and the amount appears in `asset_balance_changes`;
+      - the classic `payment` operation, kept for flat x402 payments that do
+        not go through a contract.
+
+    Returns the matching transfer, or None.
+    """
+    # Soroban: read the balance change the ledger recorded.
+    for change in op.get("asset_balance_changes") or []:
+        if change.get("type") != "transfer":
+            continue
+        if change.get("to") != pay_to:
+            continue
+        if expected_asset and change.get("asset_code") != expected_asset:
+            continue
+        try:
+            moved = float(change.get("amount", "0"))
+        except (TypeError, ValueError):
+            continue
+        if moved < expected_amount:
+            continue
+        return {"amount": moved, "payer": change.get("from", "")}
+
+    # Classic payment operation.
+    if op.get("type") == "payment" and op.get("to") == pay_to:
+        if not expected_asset or op.get("asset_code") == expected_asset:
+            try:
+                moved = float(op.get("amount", "0"))
+            except (TypeError, ValueError):
+                return None
+            if moved >= expected_amount:
+                return {"amount": moved, "payer": op.get("from", "")}
+
+    return None
+
+
 async def _verify_tx_on_horizon(
     tx_hash: str, pay_to: str, expected_amount: str, expected_asset: str = "USDC"
 ) -> dict:
     """Verify a payment transaction on Stellar Horizon. Fail-closed design.
 
-    Only used as fallback when facilitator is down. Validates:
-    - Transaction exists and succeeded
-    - Contains a payment operation to the expected recipient
-    - Amount meets or exceeds the expected amount
-    - Asset matches (USDC)
+    Used as the fallback when the facilitator is unreachable. Validates:
+    - the transaction exists and succeeded;
+    - it moved `expected_asset` to `pay_to`;
+    - the amount that actually moved meets or exceeds `expected_amount`.
 
-    Returns wallet_address (source_account) from the transaction for auth binding.
+    **Every one of those facts is read from Horizon**, never from the caller's
+    headers. The caller supplies only the transaction hash, which is useless
+    unless the transaction on the network says what the caller claims.
+
+    Returns `wallet_address` — the account the funds came from — for auth
+    binding. That is the payer, which is not always the transaction's source
+    account: a sponsored or multi-operation transaction can be submitted by a
+    different account than the one being debited.
+
+    Horizon is network-specific by URL, so a transaction from the other network
+    simply is not found here. That is the network separation; see x402_config
+    for the check that keeps the two settings from disagreeing.
     """
     async with httpx.AsyncClient(timeout=10.0) as client:
         # Get transaction details
@@ -91,29 +149,27 @@ async def _verify_tx_on_horizon(
         ops_data = ops_resp.json()
         records = ops_data.get("_embedded", {}).get("records", [])
 
-        # Find a payment operation to the expected recipient
-        for op in records:
-            op_type = op.get("type", "")
-            if op_type != "payment":
-                continue
+        try:
+            required = float(expected_amount)
+        except (TypeError, ValueError):
+            # An unparseable price must not become "no minimum".
+            return {"success": False, "reason": "bad_expected_amount"}
 
-            # Classic payment op: validate destination, amount, asset
-            if op.get("to") != pay_to:
-                continue
-            op_amount = float(op.get("amount", "0"))
-            if op_amount < float(expected_amount):
-                continue
-            asset_code = op.get("asset_code", "")
-            if expected_asset and asset_code != expected_asset:
+        for op in records:
+            transfer = _transfer_to_recipient(op, pay_to, required, expected_asset)
+            if transfer is None:
                 continue
             return {
                 "success": True,
                 "txHash": tx_hash,
                 "nonce": tx_hash,
-                "wallet_address": data.get("source_account", ""),
+                # The payer, falling back to the submitter when Horizon did not
+                # report one (classic payments always do; be defensive anyway).
+                "wallet_address": transfer["payer"] or data.get("source_account", ""),
+                "amount_paid": f"{transfer['amount']:.7f}",
             }
 
-        return {"success": False}
+        return {"success": False, "reason": "no_matching_transfer"}
 
 
 def x402_gate(
@@ -145,6 +201,13 @@ def x402_gate(
                 est_cost = float(estimate["estimated_cost"])
                 ceiling = str(round(est_cost * BUDGET_MARGIN, 7))
                 payment_required_payload = {
+                    # `price` is the field a generic x402 client reads, so it is
+                    # always present. With an estimator it carries the ceiling —
+                    # the most the caller can be charged — while the estimate and
+                    # the per-tool breakdown go alongside as detail. Leaving it
+                    # out would make this endpoint unreadable to any x402 client
+                    # that does not know about Brújula's own fields.
+                    "price": ceiling,
                     "estimated_cost": estimate["estimated_cost"],
                     "budget_ceiling": ceiling,
                     "rate_breakdown": estimate.get("rate_breakdown", []),
@@ -173,6 +236,14 @@ def x402_gate(
             json.dumps(payment_required_payload).encode()
         ).decode()
 
+        # Verify against what this request was actually quoted. When an
+        # estimator ran, the client was told to lock `budget_ceiling`, which is
+        # higher than the flat `price_usdc` floor — checking the floor instead
+        # would accept a payment smaller than the one we asked for.
+        quoted_minimum = payment_required_payload.get(
+            "budget_ceiling", payment_required_payload.get("price", price_usdc)
+        )
+
         payment_sig = request.headers.get("PAYMENT-SIGNATURE")
 
         if not payment_sig:
@@ -200,7 +271,7 @@ def x402_gate(
                     result = await _verify_tx_on_horizon(
                         tx_hash,
                         pay_to=pay_to,
-                        expected_amount=price_usdc,
+                        expected_amount=quoted_minimum,
                     )
                     if result and not result.get("success"):
                         import asyncio as _aio
@@ -209,7 +280,7 @@ def x402_gate(
                         result = await _verify_tx_on_horizon(
                             tx_hash,
                             pay_to=pay_to,
-                            expected_amount=price_usdc,
+                            expected_amount=quoted_minimum,
                         )
             except (json.JSONDecodeError, Exception):
                 pass
