@@ -14,7 +14,7 @@
  * with a 30-second safety margin to avoid mid-request expiry.
  */
 
-import { signTransaction, getPublicKey } from "./wallet";
+import { signTransaction, signMessage, getPublicKey } from "./wallet";
 
 const MARKETPLACE_API = process.env.NEXT_PUBLIC_MARKETPLACE_URL || "http://localhost:5050";
 
@@ -55,11 +55,49 @@ export function clearSessionToken(): void {
   if (typeof window === "undefined") return;
   sessionStorage.removeItem(SESSION_KEY);
   sessionStorage.removeItem(SESSION_EXP_KEY);
+  // The cookie has to go too, or signing out would leave the server still
+  // treating the next request as authenticated.
+  void fetch("/api/session", { method: "DELETE" }).catch(() => {});
 }
 
 // Inflight exchange dedupe: if N concurrent calls hit a cold cache, they
 // all await the same Freighter prompt instead of triggering N prompts.
 let _inflightExchange: Promise<string> | null = null;
+
+type SignedChallenge = { signature: string } | { signedXdr: string };
+
+/**
+ * Sign the login challenge, preferring SEP-53 message signing.
+ *
+ * Falls back to signing the challenge transaction when the wallet has no
+ * `signMessage`. The fallback is a real transaction object that is never
+ * submitted; it exists only because message signing is not universal yet.
+ *
+ * A user who dismisses the wallet prompt must NOT be silently re-prompted by
+ * the fallback, so a rejection by the person is rethrown rather than retried.
+ */
+async function signChallenge(
+  challenge: string,
+  unsignedXdr: string,
+): Promise<SignedChallenge> {
+  try {
+    return { signature: await signMessage(challenge) };
+  } catch (err) {
+    if (isUserRejection(err)) throw err;
+    return { signedXdr: await signTransaction(unsignedXdr) };
+  }
+}
+
+/** Heuristic: did the person decline, or did the wallet lack the method? */
+function isUserRejection(err: unknown): boolean {
+  const message = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    message.includes("reject") ||
+    message.includes("declin") ||
+    message.includes("denied") ||
+    message.includes("cancel")
+  );
+}
 
 async function exchangeChallengeForToken(): Promise<string> {
   if (_inflightExchange) return _inflightExchange;
@@ -68,7 +106,8 @@ async function exchangeChallengeForToken(): Promise<string> {
     try {
       const publicKey = await getPublicKey();
 
-      // 1. Get challenge transaction
+      // 1. Get the challenge. The endpoint returns both the bare nonce and an
+      //    unsigned transaction carrying it, so either signing path can be used.
       const challengeRes = await fetch(
         `${MARKETPLACE_API}/api/auth/challenge-tx?public_key=${publicKey}`,
       );
@@ -77,14 +116,22 @@ async function exchangeChallengeForToken(): Promise<string> {
       }
       const { challenge, unsigned_xdr } = await challengeRes.json();
 
-      // 2. Sign with Freighter — this is the ONE prompt per session
-      const signedXdr = await signTransaction(unsigned_xdr);
+      // 2. Sign it — the ONE wallet prompt per session.
+      //
+      //    SEP-53 message signing is the path we want: the wallet signs the
+      //    challenge under the "Stellar Signed Message:\n" prefix, and nothing
+      //    that looks like a transaction is ever put in front of the user.
+      //
+      //    Not every wallet module implements signMessage, so a rejection falls
+      //    back to signing the challenge transaction — which is never submitted
+      //    and exists only because that path works everywhere.
+      const signed = await signChallenge(challenge, unsigned_xdr);
 
-      // 3. Exchange signed challenge for a JWT
+      // 3. Exchange the signed challenge for a JWT
       const sessionRes = await fetch(`${MARKETPLACE_API}/api/auth/session`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ publicKey, challenge, signedXdr }),
+        body: JSON.stringify({ publicKey, challenge, ...signed }),
       });
       if (!sessionRes.ok) {
         throw new Error(`Session exchange failed: ${sessionRes.status} ${await sessionRes.text()}`);
@@ -95,6 +142,30 @@ async function exchangeChallengeForToken(): Promise<string> {
       }
 
       setCachedToken(token, expires_in);
+
+      // Hand the same token to Next, which stores it as an httpOnly cookie.
+      //
+      // Two homes for one token, and each is needed: `sessionStorage` is what
+      // can reach the marketplace on another origin with an Authorization
+      // header, and the cookie is what `/api/pm` and the app layout can read
+      // on the server. The cookie is the one that gates the expensive route,
+      // and being httpOnly it is the one a page script cannot steal.
+      //
+      // A failure here is not fatal to this exchange — the marketplace calls
+      // still work — so it is reported rather than thrown.
+      try {
+        const res = await fetch("/api/session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        });
+        if (!res.ok) {
+          console.warn("No se pudo registrar la sesión en el servidor:", res.status);
+        }
+      } catch (err) {
+        console.warn("No se pudo registrar la sesión en el servidor:", err);
+      }
+
       return token;
     } finally {
       _inflightExchange = null;
