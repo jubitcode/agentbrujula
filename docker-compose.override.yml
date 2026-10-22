@@ -1,0 +1,6 @@
+# Local-only override (untracked): 5432 is taken by another project's container,
+# so this project's postgres is published on 5433 instead.
+services:
+  postgres:
+    ports: !override
+      - "127.0.0.1:5433:5432"
