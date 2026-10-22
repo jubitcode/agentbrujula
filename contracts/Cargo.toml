@@ -1,5 +1,5 @@
 [workspace]
-members = ["tool-registry", "compression-compliance", "usdc-escrow"]
+members = ["tool-registry", "compression-compliance", "usdc-escrow", "evidence-attestation"]
 resolver = "2"
 
 [profile.release]
