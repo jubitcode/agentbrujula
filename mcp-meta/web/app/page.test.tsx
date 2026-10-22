@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { es } from "@/lib/i18n/es";
 import userEvent from "@testing-library/user-event";
 
 jest.mock("@/lib/wallet", () => ({
@@ -209,29 +210,29 @@ describe("Landing page", () => {
     expect(screen.getByText(/Mexico City/i)).toBeInTheDocument();
   });
 
-  test("renders Browse all agents CTA pointing to /hire", () => {
+  test("the browse-agents CTA points at the catalogue", () => {
     render(<HomePage />);
     const browseAll = screen.getByText(/browse all agents/i).closest("a");
-    expect(browseAll).toHaveAttribute("href", "/hire");
+    // The catalogue moved to /agentes behind the login. A visitor with no
+    // session is redirected to /entrar by the app layout, which is the
+    // right place for them — so the link stays simple.
+    expect(browseAll).toHaveAttribute("href", "/agentes");
   });
 
-  test("clicking Connect wallet on landing redirects to /hire after success", async () => {
+  test("the main CTA hands over to the sign-in flow", async () => {
     const { connectWallet } = jest.requireMock("@/lib/wallet");
-    connectWallet.mockResolvedValueOnce({ publicKey: "GTESTWALLET123456789" });
     mockRouterPush.mockClear();
 
     const user = userEvent.setup();
     render(<HomePage />);
 
-    // Click the ghost CTA in the hero (visible because no wallet saved).
-    await user.click(screen.getAllByRole("button", { name: /connect wallet/i })[0]);
+    await user.click(screen.getAllByRole("button", { name: /connect wallet to start/i })[0]);
 
-    // The handler must navigate so the user does not stay on the landing
-    // after they have already authenticated.
-    expect(connectWallet).toHaveBeenCalled();
-    // Wait microtask for the async handler to resolve.
-    await new Promise((r) => setTimeout(r, 0));
-    expect(mockRouterPush).toHaveBeenCalledWith("/hire");
+    // The landing no longer opens a wallet itself. Connecting only reads an
+    // address, which proves nothing: the account is created by *signing* a
+    // challenge, which happens at /login (or /register for a new account).
+    expect(connectWallet).not.toHaveBeenCalled();
+    expect(mockRouterPush).toHaveBeenCalledWith("/login");
   });
 
   test("no links point to /coming-soon (legacy stub removed)", () => {

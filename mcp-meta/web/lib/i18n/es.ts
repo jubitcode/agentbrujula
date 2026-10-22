@@ -1,0 +1,605 @@
+/**
+ * Spanish — the source dictionary.
+ *
+ * This file is the reference: `en.ts` is typed as `typeof es`, so a key added
+ * here and forgotten there is a compile error rather than an English sentence
+ * appearing in the middle of a Spanish page.
+ *
+ * Keys read `screen.thing`. Values may be a string or a string[]; a list is
+ * for bulleted content, read with `tl()` instead of `t()`.
+ *
+ * What is deliberately absent: agent handles, contract addresses, hashes,
+ * network names and model tiers. Those are identifiers, and translating an
+ * identifier makes it wrong.
+ */
+
+export const es = {
+  // ── Shared ────────────────────────────────────────────────────────────
+  "common.loading": "Cargando…",
+  "common.retry": "Reintentar",
+  "common.close": "Cerrar",
+  "common.copy": "Copiar",
+  "common.copied": "¡Copiado!",
+  "common.details": "Ver detalles",
+  "common.hideDetails": "Ocultar detalles",
+  "common.back": "Volver",
+  "common.expand": "Mostrar",
+  "common.collapse": "Ocultar",
+  "common.unavailable": "No disponible",
+  "common.language": "Idioma",
+
+  // ── Navigation ────────────────────────────────────────────────────────
+  "nav.agents": "Agentes",
+  "nav.pm": "PM",
+  "nav.escrows": "Escrows",
+  "nav.verify": "Verificar",
+  "nav.hire": "Contratar",
+  "nav.platform": "Plataforma",
+  "nav.account": "Cuenta",
+  "nav.myAgents": "Mis agentes",
+  "nav.wallet": "Billetera",
+  "nav.help": "Ayuda",
+  "nav.networkLabel": "Red {network} · Stellar",
+  "nav.label": "Secciones",
+
+  // ── Header / wallet ───────────────────────────────────────────────────
+  "header.connect": "Conectar billetera",
+  "header.wallet": "Billetera",
+  "header.connected": "Conectada",
+  "header.balance": "Saldo disponible",
+  "header.balanceLoading": "Leyendo el saldo…",
+  "header.balanceUnavailable": "No pudimos leer el saldo",
+  "header.copyAddress": "Copiar la dirección completa",
+  "header.explorer": "Ver en Stellar Expert",
+  "header.disconnect": "Desconectar",
+
+  // ── Home / catalogue ──────────────────────────────────────────────────
+  "home.kicker": "agentes",
+  "home.titleA": "Encontrá el agente",
+  "home.titleB": "que hace avanzar tu proyecto.",
+  "home.intro":
+    "Cada agente está registrado en un contrato de Stellar. Contás qué necesitás, el agente trabaja, y el pago se libera solo si la entrega pasa la verificación.",
+  "home.search": "Buscar agentes, tareas o especialidades…",
+  "home.searchLabel": "Buscar en el catálogo",
+  "home.all": "Todos",
+  "home.loading": "Leyendo el registro de agentes…",
+  "home.error": "No se pudo leer el registro de agentes.",
+  "home.errorHint":
+    "Eso no quiere decir que no haya agentes: quiere decir que no pudimos preguntarle a mcp-meta.",
+  "home.also": "también disponibles",
+  "home.startHere": "empezá por acá",
+  "home.featureList": [
+    "Objetivo y alcance",
+    "Hitos y tareas",
+    "Riesgos y preguntas abiertas",
+    "Revisiones hasta que cierre",
+  ],
+  "home.examples": "Por ejemplo",
+  "home.cta": "Contale tu idea",
+  "home.empty": "Ningún agente coincide con esa búsqueda.",
+  "home.emptyHint": "Probá con otras palabras o quitá el filtro.",
+
+  // Tag groups. A presentation decision: the manifests carry 24 loose tags
+  // and no category, so these buckets exist in the frontend only. The tags
+  // themselves keep working as search terms.
+  "home.group.planning": "Planificación",
+  "home.group.research": "Investigación",
+  "home.group.writing": "Escritura",
+  "home.group.technical": "Decisiones técnicas",
+  "home.group.knowledge": "Conocimiento",
+  "home.group.other": "Otros",
+
+  // ── Explore ───────────────────────────────────────────────────────────
+  "explore.kicker": "catálogo técnico",
+  "explore.title": "¿Qué sabe hacer este sistema?",
+  "explore.intro": "{n} habilidades publicadas en el registro.",
+  "explore.registry": "contrato Tool Registry",
+  "explore.verifyOn": "Ver en Stellar Expert",
+  "explore.try": "Probar: “{example}”",
+  "explore.tryPlain": "Probar esta habilidad",
+  "explore.empty": "No hay habilidades publicadas.",
+  "explore.emptyHint":
+    "mcp-meta responde, pero su registro está vacío. Se cargan al arrancarlo con los manifests de los agentes.",
+  "explore.error": "No se pudo leer el registro de habilidades.",
+
+  // ── Knowledge graph ───────────────────────────────────────────────────
+  "knowledge.title": "Grafo de conocimiento",
+  "knowledge.subtitle": "{nodes} nodos · {edges} conexiones",
+  "knowledge.refresh": "Actualizar",
+  "knowledge.legendNote": "El tamaño es la importancia; el grosor, el peso de la conexión",
+  "knowledge.type.fact": "dato",
+  "knowledge.type.finding": "hallazgo",
+  "knowledge.type.episode": "episodio",
+  "knowledge.type.concept": "concepto",
+  "knowledge.loading": "Leyendo el grafo…",
+  "knowledge.empty": "Todavía no hay conocimiento guardado.",
+  "knowledge.emptyHint":
+    "El grafo se llena cuando un agente de investigación guarda lo que encuentra.",
+  "knowledge.error": "No se pudo leer el grafo.",
+  "knowledge.nodeType": "Tipo",
+  "knowledge.nodeImportance": "Importancia",
+  "knowledge.nodeAccessed": "Consultado",
+  "knowledge.nodeAccessedTimes": "{n} veces",
+
+  // ── Deploy ────────────────────────────────────────────────────────────
+  "deploy.title": "Publicá tu propio agente",
+  "deploy.intro":
+    "Soltá el manifest.yaml junto con el archivo de código para publicarlo.",
+  "deploy.drop": "Soltá acá la carpeta del agente",
+  "deploy.dropHint": "manifest.yaml + el archivo de código",
+  "deploy.working": "Publicando…",
+  "deploy.noManifest": "No encontramos un manifest.yaml entre los archivos.",
+  "deploy.failed": "No se pudo publicar el agente.",
+  "deploy.live": "{agent} está publicado",
+  "deploy.tryIt": "Probarlo",
+
+  // ── 404 ───────────────────────────────────────────────────────────────
+  "notFound.kicker": "página no encontrada",
+  "notFound.title": "Esta dirección no existe.",
+  "notFound.intro":
+    "Puede que el enlace esté mal escrito o que la página haya cambiado de lugar.",
+  "notFound.home": "Volver al inicio",
+  "notFound.agents": "Ver los agentes",
+  "notFound.pm": "Hablar con el PM",
+  // ── PM ────────────────────────────────────────────────────────────────
+  "pm.kicker": "pm",
+  "pm.title": "Contale tu idea al PM",
+  "pm.intro":
+    "Escribí qué querés hacer, con tus palabras. El PM devuelve un plan con objetivo, alcance, hitos, tareas, riesgos y —lo más útil— lo que todavía no está decidido. Si algo no te cierra, se lo decís y lo rehace.",
+  "pm.briefLabel": "Tu idea",
+  "pm.briefPlaceholder":
+    "Una app para que los vecinos de un barrio compartan herramientas que usan poco: taladros, escaleras, cortadoras de césped…",
+  "pm.contextLabel": "Contexto (opcional)",
+  "pm.contextHelp":
+    "Documentos del proyecto que el PM debería tener en cuenta. Solo texto: {formats}.",
+  "pm.contextPick": "Elegir archivos",
+  "pm.contextCount": "{n} archivo para el contexto",
+  "pm.contextCountPlural": "{n} archivos para el contexto",
+  "pm.submit": "Enviar idea y generar plan",
+  "pm.working": "Generando…",
+  "pm.stepPlan": "El PM está leyendo tu idea…",
+  "pm.stepRevise": "El PM está rehaciendo el plan…",
+  "pm.waitHint":
+    "Puede tardar un minuto o dos. Está escribiendo el plan entero, no una respuesta corta.",
+  "pm.briefTooShort":
+    "Contá la idea con un poco más de detalle: al menos {n} caracteres.",
+  "pm.revisionEmpty": "Escribí qué querés cambiar del plan.",
+  "pm.noPlan": "el agente no devolvió un plan",
+  "pm.skippedTitle": "Estos archivos no se leyeron",
+  "pm.skippedHint":
+    "El plan se hizo sin ellos. Si alguno era importante, decíselo al PM en la revisión.",
+
+  // The brief, kept on screen after the plan arrives — collapsed, so it does
+  // not push the plan down, but never gone.
+  "pm.briefSummary": "Tu idea",
+  "pm.briefShow": "Ver la idea original",
+  "pm.briefHide": "Ocultar la idea original",
+  "pm.briefFiles": "{n} archivo de contexto",
+  "pm.briefFilesPlural": "{n} archivos de contexto",
+
+  "pm.reviseLabel": "¿Querés ajustar algo?",
+  "pm.reviseHelp":
+    "Decile qué cambiar. No edita el plan: hace la versión siguiente, y la anterior queda acá arriba.",
+  "pm.revisePlaceholder":
+    "Sacá la verificación de identidad, es demasiado para empezar…",
+  "pm.reviseSubmit": "Pedir una revisión",
+
+  "pm.wsKicker": "Brújula · espacio de trabajo",
+  "pm.wsReturns": "El PM te devuelve",
+  "pm.wsReturnsList": [
+    "Objetivo y alcance",
+    "Hitos y tareas con dependencias",
+    "Riesgos y preguntas abiertas",
+    "Criterios para dar por terminado"
+  ],
+  "pm.chars": "{n} / {max}",
+  "pm.moreContext": "Cuanto más contexto le des, más útil es el plan.",
+  "pm.reviewKicker": "Revisión del plan",
+  "pm.reviewIntro":
+    "Leé el plan y, si algo no te cierra, pedile una revisión: el PM hace la versión siguiente y las anteriores quedan acá.",
+  "pm.versions": "Versiones",
+  "pm.versionShort": "v{n}",
+  "pm.backToBrief": "Volver al brief",
+  "pm.docKicker": "Brújula / entregable del PM",
+  "pm.docVersionLabel": "Versión {n}",
+  "pm.docTitle": "Plan de proyecto",
+  "pm.preparedBy": "Preparado por",
+  "pm.preparedByValue": "Agente PM · Brújula",
+  "pm.docStatus": "Estado: borrador para revisión",
+  "pm.docGenerated": "Generado el {date}",
+  "pm.viewingOld": "Estás viendo una versión reemplazada.",
+  "pm.viewLatest": "Ver la última",
+  "pm.planVersion": "Plan v{n}",
+  "pm.planSuperseded": "reemplazado",
+  "pm.planCurrent": "versión actual",
+  "pm.planRevisionOf": "Rehecho porque pediste: “{feedback}”",
+  "pm.objective": "Objetivo",
+  "pm.scope": "Alcance",
+  "pm.scopeIn": "Incluye",
+  "pm.scopeOut": "No incluye",
+  "pm.nothingDeclared": "nada declarado",
+  "pm.milestones": "Hitos",
+  "pm.tasks": "Tareas",
+  "pm.taskDepends": "depende de",
+  "pm.risks": "Riesgos",
+  "pm.openQuestions": "Lo que este plan no resuelve",
+  "pm.doneCriteria": "Está terminado cuando",
+  "pm.entities": "Entidades",
+  "pm.flows": "Flujos",
+  "pm.constraints": "Restricciones",
+  // ── Verify ────────────────────────────────────────────────────────────
+  "verify.kicker": "verificar",
+  "verify.title": "Comprobalo vos",
+  "verify.intro":
+    "Acá el pago lo libera una constancia registrada en Stellar, no nosotros decidiendo que el trabajo estuvo bien. Esta página lee ese registro. Pegá un identificador de tarea para ver el veredicto, o pegá la entrega que recibiste para saber si es la que realmente se verificó.",
+  "verify.whyTitle": "Por qué importa el hash.",
+  "verify.whyBody":
+    "La constancia está atada a un SHA-256 del brief y la entrega exactos. Un veredicto aprobado para un contenido distinto no dice nada sobre lo que vos tenés, así que una diferencia se informa con la misma claridad que una coincidencia. No necesitás cuenta y nada de lo que escribas se guarda.",
+  "verify.taskId": "Identificador de tarea",
+  "verify.taskIdPlaceholder": "pegá acá el identificador de la tarea",
+  "verify.read": "Leer la constancia",
+  "verify.reading": "Leyendo la cadena…",
+  "verify.compareHelp":
+    "Para verificar una entrega, agregá el brief y la salida tal como los recibiste. Cualquier diferencia —una palabra, un espacio— cambia el hash, y de eso se trata.",
+  "verify.agentHandle": "Identificador del agente",
+  "verify.agentPlaceholder": "nombre del agente",
+  "verify.brief": "Brief",
+  "verify.briefPlaceholder": "el pedido tal como lo enviaste",
+  "verify.deliverable": "Entrega",
+  "verify.deliverablePlaceholder": "la respuesta tal como la recibiste",
+  "verify.compare": "Comparar con la cadena",
+  "verify.comparing": "Comparando…",
+  "verify.errorTitle": "No pudimos responder.",
+  "verify.errorHint":
+    "Esto no es un veredicto. No llegar a la cadena no es lo mismo que una tarea sin constancia, y ninguna de las dos cosas significa que el trabajo haya pasado.",
+  "verify.notAttested": "sin constancia",
+  "verify.hashMatches": "el hash coincide",
+  "verify.hashDiffers": "el hash no coincide",
+  "verify.yourHash": "Hash de lo que pegaste",
+  "verify.chainHash": "Hash registrado en la cadena",
+  "verify.evidenceHash": "Hash de la evidencia en la cadena",
+  "verify.agentPaid": "Agente que paga el contrato",
+  "verify.attestedAt": "Fecha de la constancia",
+  "verify.contract": "Contrato de constancias",
+  "verify.checksTitle": "Las comprobaciones, repetidas sobre lo que pegaste",
+  "verify.check.delivered_something": "Entregó algo",
+  "verify.check.not_an_error_message": "No es un mensaje de error",
+  "verify.check.long_enough_to_be_a_deliverable": "Tiene largo de entrega",
+  "verify.check.within_compression_limit": "No es relleno",
+  "verify.checksNote":
+    "Son comprobaciones estructurales: que se entregó algo, que no es un mensaje de error, que no es relleno. Son objetivas y cualquiera puede repetirlas, y por eso el veredicto puede vivir en un registro público. No son un juicio sobre si el trabajo está bien: eso necesita un modelo leyendo el brief contra la salida, y todavía no está conectado.",
+
+  // ── Escrows ───────────────────────────────────────────────────────────
+  "escrowBar.title": "Contrato",
+  "escrowBar.amount": "Bloqueado",
+  "escrowBar.locked": "bloqueado",
+  "escrowBar.working": "trabajando",
+  "escrowBar.settled": "liquidado",
+  "escrowBar.refunded": "devuelto",
+  "escrowBar.details": "Ver el detalle",
+  "escrows.kicker": "escrows",
+  "escrows.title": "A dónde fue el dinero",
+  "escrows.intro":
+    "Cada fila es un escrow en el contrato. El estado que se muestra es el que dice la cadena, no el que cree nuestra base de datos.",
+  "escrows.loading": "Leyendo los escrows…",
+  "escrows.error": "No pudimos hablar con el orquestador.",
+  "escrows.errorHint": "El contrato se sigue pudiendo leer directamente en el explorador.",
+  "escrows.empty": "Todavía no hay escrows",
+  "escrows.emptyHint":
+    "Nadie bloqueó fondos en esta instalación. Cuando se contrate a un agente, esta página se llena: cada fila con su transacción en Stellar.",
+  "escrows.state.settled": "Liquidado",
+  "escrows.state.released": "Pagado",
+  "escrows.state.refunded": "Devuelto",
+  "escrows.state.locked": "Bloqueado",
+  "escrows.state.pending": "En curso",
+  "escrows.detail.settled": "Se pagó al agente y se devolvió el resto",
+  "escrows.detail.released": "Se pagó el monto completo al agente",
+  "escrows.detail.refunded": "El dinero volvió a quien lo bloqueó",
+  "escrows.detail.locked": "El contrato tiene los fondos y todavía no los resolvió",
+  "escrows.task": "tarea",
+  "escrows.amount": "monto",
+  "escrows.confirmed": "leído del contrato",
+  "escrows.notOnChain": "sin registro en la cadena",
+  "escrows.checking": "consultando el contrato…",
+  "escrows.escrowTx": "transacción del escrow",
+  "escrows.refundTx": "transacción de devolución",
+  "escrows.count": "{n} escrow · red {network}",
+  "escrows.countPlural": "{n} escrows · red {network}",
+  "escrows.whoTitle": "¿Quién controla el dinero?",
+  "escrows.whoBody":
+    "Nadie de acá. Los fondos están en la dirección del propio contrato de escrow. Brújula no puede retirarlos: el contrato paga al agente o devuelve al cliente, y esas son las dos únicas salidas.",
+  "escrows.mismatch": "Estos fondos no se movieron.",
+  "escrows.mismatchDetail":
+    "El contrato dice {chain} y nuestro registro dice {local}. Vale lo que dice el contrato. Lo mostramos en vez de esconderlo: un registro desactualizado es un error de conciliación, y el que no se ve no se arregla.",
+
+  // ── Debate ────────────────────────────────────────────────────────────
+  "debate.title": "Debate de arquitectura",
+  "debate.intro":
+    "Dos agentes discuten tu decisión técnica y devuelven un documento con la recomendación y por qué.",
+  "debate.placeholder": "Contá la decisión de arquitectura que tenés que tomar…",
+  "debate.paymentTitle": "Hay que pagar para seguir",
+  "debate.estimated": "Costo estimado",
+  "debate.budgetLock": "Se bloquea",
+  "debate.pay": "Pagar y correr el debate",
+  "debate.connectAndPay": "Conectar billetera y pagar",
+  "debate.running": "Los agentes están debatiendo…",
+  "debate.cancelled": "Se canceló la firma en la billetera. No se hizo ningún pago.",
+  "debate.failed": "No se pudo pedir el debate.",
+  "debate.concession": "Hubo una concesión",
+  "debate.maxRounds": "Se alcanzó el máximo de rondas",
+  "debate.settlement": "Liquidación",
+  "debate.actualCost": "Costo real",
+  "common.cancel": "Cancelar",
+  "debate.waitHint": "Tarda entre 30 y 60 segundos: son varias llamadas al modelo.",
+  "debate.escrowNote": "El USDC queda bloqueado en el escrow. Si la ejecución falla, se devuelve.",
+  "debate.network": "Red",
+  "debate.escrow": "Escrow",
+  "debate.rounds": "{n} rondas",
+  "debate.tokens": "{n} tokens",
+  "debate.tabDebate": "Debate",
+  "debate.tabAdr": "Documento",
+  "debate.advocate": "A favor",
+  "debate.skeptic": "En contra",
+
+  // ── Hire ──────────────────────────────────────────────────────────────
+  "hire.titleA": "¿Qué necesitás",
+  "hire.titleB": "que se haga?",
+  "hire.intro":
+    "Un agente lo toma. Primero ves el resultado y después decidís si pagás.",
+  "hire.taskPlaceholder":
+    "Escribí la tarea con tus palabras. Sé específico con el formato que querés recibir.",
+  "hire.taskLabel": "Descripción de la tarea",
+  "hire.find": "Buscar un agente",
+  "hire.filter": "Filtrar por habilidad",
+  "hire.filterHint": "Dejalo vacío y el sistema elige según el texto de la tarea.",
+  "hire.maxBudget": "Presupuesto máximo (USDC)",
+  "hire.budgetHint":
+    "Es el techo de lo que podés gastar. Lo que no se use se devuelve solo.",
+  "hire.pickSomeone": "Elegí a quién le das el trabajo",
+  "hire.choose": "Elegir",
+  "hire.price": "Precio",
+  "hire.youPayUpTo": "Vas a pagar hasta",
+  "hire.confirmPayment": "Confirmar el pago",
+  "hire.estimatedCost": "Costo estimado real",
+  "hire.actualCost": "Costo real",
+  "hire.settlement": "Liquidación",
+  "hire.rateBreakdown": "Ver el desglose",
+  "hire.complete": "Tarea terminada",
+  "hire.newTask": "Tarea nueva",
+  "hire.tryAgain": "Probar de nuevo",
+  "hire.editTask": "Editar la tarea y probar otra vez",
+  "hire.cached": "El agente ya había hecho algo así",
+  "hire.welcomeBack":
+    "Hola de nuevo. Tu billetera está conectada: podés contratar sin volver a firmar.",
+  "hire.dismissWelcome": "Cerrar el aviso",
+  "hire.progress": "Progreso",
+  "hire.stepOf": "Paso {n} de {total}",
+  "hire.step.describe": "Describir",
+  "hire.step.pick": "Elegir",
+  "hire.step.pay": "Pagar",
+  "hire.step.watch": "Seguir",
+  "hire.step.done": "Listo",
+  "hire.wrongNetwork": "La billetera está en otra red",
+  "hire.networkStep1": "Abrí la extensión Freighter en tu navegador.",
+  "hire.networkStep2": "Tocá el selector de red arriba de la ventana.",
+  "hire.networkStep3": "Volvé acá y tocá el botón de abajo.",
+  "hire.networkRetry": "Ya la cambié. Probar otra vez.",
+  "hire.cancelled": "Se canceló la firma en la billetera. No se hizo ningún pago.",
+  "hire.discovering": "Consultando el registro en la cadena…",
+  "hire.buildingTx": "Armando la transacción de Soroban…",
+  "hire.submitting": "Enviando a Stellar…",
+  "hire.approveInWallet": "Revisá tu billetera y aprobá la transacción en Freighter.",
+  "hire.fromMemory":
+    "Parte de esta respuesta salió de lo que el agente ya había buscado antes. Esa parte fue instantánea y no costó de más: cuanto más usás Brújula, más rápido y más barato sale cada pedido.",
+  "hire.payAndExecute": "Pagar y ejecutar",
+  "hire.connectAndPay": "Conectar billetera y pagar",
+  "hire.advancedShow": "Opciones avanzadas",
+  "hire.advancedHide": "Ocultar",
+  "hire.agentWorking": "El agente está trabajando",
+  "hire.finishing": "Terminando",
+  "hire.takesSeconds": "Suele tardar unos segundos.",
+  "hire.releasingPayment": "Liberando el pago.",
+  "hire.stepDone": "Listo",
+  "hire.stepWorking": "Trabajando",
+  "hire.eyebrow": "pagás solo si la entrega pasa",
+  "hire.orClick": "o empezá con un ejemplo:",
+  "hire.detected": "Parece una tarea de {skill}",
+  "hire.bestMatch": "Mejor coincidencia",
+  "hire.backToTask": "Volver a la tarea",
+  "hire.paying": "Pagando a {agent}",
+  "hire.escrowNote":
+    "El USDC queda en el escrow. Al agente se le paga recién cuando la entrega se verifica, y lo que no se use vuelve a tu billetera.",
+  "hire.agentsReady": "{n} agentes disponibles para tomarla.",
+  "hire.loading": "Cargando…",
+
+  // ── Acceso ────────────────────────────────────────────────────────────
+  "auth.heroA": "Tu trabajo.",
+  "auth.heroB": "Tu acuerdo.",
+  "auth.heroC": "Tu tranquilidad.",
+  "auth.heroIntro":
+    "Conectá tu billetera Stellar para entrar a Brújula y manejar proyectos con pagos protegidos.",
+  "auth.trust":
+    "Conexión segura. Nunca te vamos a pedir tu frase secreta ni tu clave privada.",
+  "auth.welcome": "Bienvenido a Brújula",
+  "auth.title": "Entrá a tu cuenta",
+  "auth.subtitle": "Elegí tu rol, conectá una billetera y completá tu perfil.",
+
+  "auth.step1": "1 · Elegí tu rol",
+  "auth.roleClient": "Quiero contratar",
+  "auth.roleClientHint": "Buscar agentes y encargarles trabajo",
+  "auth.roleProvider": "Quiero ofrecer servicios",
+  "auth.roleProviderHint": "Publicar tus propios agentes",
+  "auth.soon": "Pronto",
+
+  "auth.step2": "2 · Conectá tu billetera",
+  "auth.connectTitle": "Conectá tu billetera",
+  "auth.connectSubtitle":
+    "Vas a firmar un mensaje para probar que la billetera es tuya. No es una transacción y no mueve fondos.",
+  "auth.connectButton": "Conectar billetera Stellar",
+  "auth.connecting": "Esperando tu firma…",
+  "auth.changeRole": "Elegir otro rol",
+  "auth.connectFailed": "No se pudo conectar la billetera.",
+  "auth.signRejected": "Cancelaste la firma. Sin firmar no podemos crear tu cuenta.",
+
+  "auth.step3": "3 · Completá tu perfil",
+  "auth.profileTitle": "¿Cómo te llamás?",
+  "auth.profileSubtitle": "Estos datos son para identificarte dentro de Brújula.",
+  "auth.changeWallet": "Cambiar billetera",
+  "auth.name": "Nombre",
+  "auth.namePlaceholder": "Tu nombre",
+  "auth.email": "Correo electrónico",
+  "auth.emailPlaceholder": "nombre@correo.com",
+  "auth.continue": "Continuar",
+  "auth.nameRequired": "Escribí tu nombre para continuar.",
+  "auth.emailInvalid": "Ese correo no parece una dirección válida.",
+  "auth.saveFailed": "No se pudo guardar tu perfil.",
+
+  "auth.reviewLabel": "Perfil · revisión",
+  "auth.reviewTitle": "Revisá tus datos",
+  "auth.reviewSubtitle": "Confirmá que esté todo bien antes de entrar.",
+  "auth.reviewEdit": "Volver a editar",
+  "auth.role": "Rol",
+  "auth.wallet": "Billetera",
+  "auth.confirm": "Confirmar y entrar",
+  "auth.saving": "Guardando…",
+  "auth.roleClientLabel": "Contratante",
+
+  "auth.alreadyIn": "Ya tenés una sesión abierta.",
+  "auth.goToApp": "Ir a la aplicación",
+  "auth.signOut": "Cerrar sesión",
+  "auth.needAccount": "Necesitás una cuenta para entrar acá.",
+  "auth.enter": "Entrar",
+
+  // ── Landing pública ───────────────────────────────────────────────────
+  "landing.eyebrow": "Agentes especializados · Pagos protegidos",
+  "landing.titleA": "Contratá agentes de IA",
+  "landing.titleB": "y pagá solo si entregan.",
+  "landing.intro":
+    "Cada agente está registrado en un contrato de Stellar. Contás qué necesitás, el agente trabaja, y el dinero queda bloqueado en un escrow hasta que la entrega pase la verificación.",
+  "landing.cta": "Entrar a Brújula",
+  "landing.ctaHint": "Necesitás una billetera Stellar. No pedimos tarjeta.",
+  "landing.howTitle": "Cómo funciona",
+  "landing.how1Title": "Contás qué necesitás",
+  "landing.how1": "Describís la tarea con tus palabras. El PM la convierte en un plan con objetivo, alcance, hitos y riesgos.",
+  "landing.how2Title": "El dinero queda en escrow",
+  "landing.how2": "El USDC se bloquea en un contrato de Stellar. Brújula no puede retirarlo: solo paga al agente o te lo devuelve.",
+  "landing.how3Title": "Se libera si pasa la verificación",
+  "landing.how3": "La entrega se compara con lo acordado y el resultado queda registrado en la cadena, donde cualquiera puede comprobarlo.",
+  "landing.agentsTitle": "Los agentes disponibles hoy",
+  "landing.agentsIntro": "Leídos del registro, no de una lista escrita a mano.",
+  "landing.agentsCta": "Entrá para contratarlos",
+  "landing.trust":
+    "El pago no se libera por recibir texto: la entrega se compara con lo acordado y el resultado queda registrado.",
+  "landing.signIn": "Entrar",
+  "landing.openSource": "Testnet de Stellar · Contratos verificables",
+  "sign.kicker": "confirmación de pago",
+  "sign.title": "Vas a bloquear {amount} USDC",
+  "sign.subtitle": "Para que {agent} haga el trabajo.",
+  "sign.locks": "Se bloquea",
+  "sign.estimated": "Costo estimado",
+  "sign.network": "Red",
+  "sign.escrow": "Contrato de escrow",
+  "sign.ceilingNote":
+    "Se bloquean {amount} USDC, que es el techo, aunque se estime {estimated}. Lo que no se use vuelve a tu billetera.",
+  "sign.whatYouAuthorise": "¿Qué estás autorizando?",
+  "sign.authoriseList": [
+    "Mover ese monto de tu billetera al contrato de escrow.",
+    "Que el contrato le pague al agente si la entrega pasa la verificación.",
+    "Que te devuelva lo que no se use, y todo si la entrega no pasa."
+  ],
+  "sign.confirm": "Confirmar y firmar",
+
+  // ── Entrar / crear cuenta ─────────────────────────────────────────────
+  "login.title": "Entrá a tu cuenta",
+  "login.subtitle": "Conectá la billetera con la que te registraste y firmá para entrar.",
+  "login.button": "Conectar billetera y entrar",
+  "login.checking": "Buscando tu cuenta…",
+  "login.notFound": "No encontramos una cuenta con esta billetera.",
+  "login.notFoundHint":
+    "Ya firmaste, así que no vamos a pedirte la firma de nuevo: solo falta completar tu perfil.",
+  "login.createAccount": "Crear mi cuenta",
+  "login.firstTime": "¿Primera vez acá?",
+  "login.goRegister": "Creá tu cuenta",
+  "login.expired": "Tu sesión venció. Entrá de nuevo para seguir.",
+
+  "register.title": "Creá tu cuenta",
+  "register.subtitle": "Elegí tu rol, conectá una billetera y completá tu perfil.",
+  "register.haveAccount": "¿Ya tenés cuenta?",
+  "register.goLogin": "Entrá",
+  "register.alreadyRegistered": "Esta billetera ya tiene una cuenta.",
+  "register.alreadyHint": "Te llevamos adentro, no hace falta que completes nada.",
+  "register.resume": "Te faltaba completar el perfil. Seguimos desde ahí.",
+
+  // ── Contrato simulado del PM ──────────────────────────────────────────
+  "demo.badge": "Demostración",
+  "demo.banner":
+    "El dinero de esta pantalla es una simulación: no se bloquea ni se transfiere nada, y no hay ninguna transacción en Stellar. El plan que escribe el agente sí es real.",
+  "demo.bannerShort": "Pago simulado · el plan es real",
+
+  "activity.approvedTitle": "Entrega aprobada",
+  "activity.approvedDetail": "El pago se liberaría al agente y quedaría la constancia.",
+  "activity.disputedTitle": "Disputa abierta",
+  "activity.disputedDetail": "Los fondos quedarían retenidos hasta resolverla.",
+  "activity.workingTitle": "El agente empezó a trabajar",
+  "activity.workingDetail": "El contrato pasó a ejecución.",
+  "activity.deliveredTitle": "Entrega recibida",
+  "activity.deliveredDetail": "El plan está listo para revisar. El pago sigue retenido.",
+  "contract.kicker": "contrato de servicio",
+  "contract.title": "Contratá al PM",
+  "contract.intro":
+    "Así funcionaría el acuerdo. Mirá las condiciones y el ciclo del pago antes de empezar.",
+  "contract.terms": "Condiciones del acuerdo",
+  "contract.agent": "Agente",
+  "contract.price": "Precio",
+  "contract.priceNote": "valor de demostración",
+  "contract.deliverable": "Qué entrega",
+  "contract.deliverableValue": "Un plan de proyecto con objetivo, alcance, hitos, tareas, riesgos y criterios de cierre",
+  "contract.revisions": "Revisiones",
+  "contract.revisionsValue": "Las que necesites: cada una produce una versión nueva",
+  "contract.network": "Red",
+  "contract.checks": "Cómo se protege tu pago",
+  "contract.checksList": [
+    "Los fondos quedan en el contrato, no en manos de Brújula.",
+    "El agente cobra recién cuando aprobás la entrega.",
+    "Si no aprobás, podés pedir revisiones o abrir una disputa.",
+    "Lo que no se use vuelve a tu billetera."
+  ],
+  "contract.deposit": "Bloquear fondos y empezar",
+  "contract.cancel": "Cancelar",
+
+  "contract.depositing": "Bloqueando los fondos…",
+  "contract.step1": "Creando el acuerdo de servicio",
+  "contract.step1detail": "Precio y condiciones fijados",
+  "contract.step2": "Depositando {amount} USDC en el contrato",
+  "contract.step2detail": "Simulación: no se mueve dinero real",
+  "contract.depositDone": "Depósito simulado completado",
+  "contract.depositDoneDetail":
+    "En un contrato real los fondos quedarían bloqueados acá. Ya podés contarle tu idea al PM.",
+  "contract.toBrief": "Escribir el brief",
+
+  "contract.state": "Estado del contrato",
+  "contract.stage.deposited": "Fondos bloqueados",
+  "contract.stage.working": "El agente está trabajando",
+  "contract.stage.delivered": "Entrega lista para revisar",
+  "contract.stage.released": "Pago liberado",
+  "contract.stage.disputed": "En disputa",
+  "contract.activity": "Actividad",
+
+  "contract.decide": "El plan está listo. ¿Qué hacés?",
+  "contract.decideHint":
+    "Mientras no apruebes, el dinero sigue en el contrato. Esa es la idea del escrow.",
+  "contract.approve": "Aprobar y liberar el pago",
+  "contract.revise": "Pedir una revisión",
+  "contract.dispute": "Abrir una disputa",
+  "contract.released": "Pago liberado (simulado)",
+  "contract.releasedDetail":
+    "En un contrato real, {amount} USDC pasarían al agente y la constancia quedaría registrada en la cadena.",
+  "contract.disputed": "Disputa abierta (simulada)",
+  "contract.disputedDetail":
+    "Los fondos quedarían retenidos hasta resolverla. Brújula no puede sacarlos de ahí.",
+  "contract.newContract": "Empezar de nuevo",
+  "contract.verify": "Verificar la entrega",
+}
+
+export type Es = typeof es
+

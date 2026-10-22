@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Header } from "@/components/header";
+import { cookies } from "next/headers";
+import { I18nProvider } from "@/lib/i18n";
+import { LANG_COOKIE, normaliseLang } from "@/lib/i18n/lang";
 import "./globals.css";
 
 const SITE_URL = "https://agentbrujula.com";
@@ -86,14 +88,30 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+/**
+ * The language is read here, on the server, from a cookie.
+ *
+ * `<html lang>` has to be right in the first byte of HTML: it is what screen
+ * readers switch voice on and what the browser's own translation prompt
+ * reads. Taking it from localStorage instead would mean rendering one
+ * language, hydrating, and swapping — a flicker on every load.
+ *
+ * `metadata` above stays as it is. Translating it would mean replacing it
+ * with an async `generateMetadata`, and a single canonical language is the
+ * right answer for OpenGraph and search anyway.
+ */
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const lang = normaliseLang((await cookies()).get(LANG_COOKIE)?.value);
+
   return (
-    <html lang="en">
+    <html lang={lang}>
+      {/* No chrome here on purpose.
+          There are three kinds of page now and they do not share a frame: the
+          public landing has its own header, the sign-in screen has none, and
+          the application has a sidebar. A header rendered here would appear
+          on all three and belong to none. Each supplies its own. */}
       <body style={{ background: "var(--bg)", color: "var(--text)", minHeight: "100vh" }}>
-        <Header />
-        <main style={{ maxWidth: 900, margin: "0 auto", padding: "2rem 1.5rem" }}>
-          {children}
-        </main>
+        <I18nProvider initial={lang}>{children}</I18nProvider>
       </body>
     </html>
   );

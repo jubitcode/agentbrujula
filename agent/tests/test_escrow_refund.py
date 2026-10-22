@@ -52,7 +52,7 @@ class TestRefundEscrow:
 
 
 class TestGetEscrowStatus:
-    @patch("research_agent.escrow.SorobanServer")
+    @patch("research_agent.escrow.get_soroban_server")
     def test_returns_parsed_status(self, MockServer):
         from research_agent.escrow import get_escrow_status
 
@@ -71,7 +71,7 @@ class TestGetEscrowStatus:
 
         mock_server.simulate_transaction.assert_called_once()
 
-    @patch("research_agent.escrow.SorobanServer")
+    @patch("research_agent.escrow.get_soroban_server")
     def test_uses_correct_function_name(self, MockServer):
         from research_agent.escrow import get_escrow_status
 
@@ -91,7 +91,7 @@ class TestGetEscrowStatus:
 
 
 class TestBuildEscrowTx:
-    @patch("research_agent.escrow.SorobanServer")
+    @patch("research_agent.escrow.get_soroban_server")
     def test_returns_unsigned_xdr_and_task_id(self, MockServer):
         from research_agent.escrow import build_escrow_tx
 
@@ -125,7 +125,7 @@ class TestBuildEscrowTx:
         assert result["task_id"] == "x402-test123"
         assert result["deadline"] == 9999999999
 
-    @patch("research_agent.escrow.SorobanServer")
+    @patch("research_agent.escrow.get_soroban_server")
     def test_raises_on_simulation_error(self, MockServer):
         from research_agent.escrow import build_escrow_tx
 

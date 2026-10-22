@@ -11,6 +11,7 @@ from .stellar_config import (
     NETWORK_PASSPHRASE,
     RPC_URL,
     TOOL_REGISTRY_CONTRACT_ID as _TOOL_REGISTRY_CONTRACT_ID,
+    get_soroban_server,
     require_contract_id,
 )
 
@@ -34,7 +35,7 @@ def _simulate_invoke(
     args: list[stellar_xdr.SCVal] | None = None,
 ) -> stellar_xdr.SCVal:
     """Build and simulate a contract invocation (read-only, no signing)."""
-    server = SorobanServer(rpc_url)
+    server = get_soroban_server(rpc_url)
 
     source_kp = Keypair.random()
     source_account = Account(source_kp.public_key, 0)
@@ -189,7 +190,7 @@ def build_deactivate_tx(
     rpc_url = rpc_url or _rpc
     contract_id = contract_id or _cid
 
-    server = SorobanServer(rpc_url)
+    server = get_soroban_server(rpc_url)
     source_account = server.load_account(agent_public)
 
     builder = TransactionBuilder(
@@ -236,7 +237,7 @@ def submit_register_tool(
     rpc_url = rpc_url or _rpc
     contract_id = contract_id or _cid
 
-    server = SorobanServer(rpc_url)
+    server = get_soroban_server(rpc_url)
     source_account = server.load_account(agent_kp.public_key)
 
     cap_scvals = [scval.to_string(c) for c in capabilities]
@@ -294,7 +295,7 @@ def submit_update_tool(
     rpc_url = rpc_url or _rpc
     contract_id = contract_id or _cid
 
-    server = SorobanServer(rpc_url)
+    server = get_soroban_server(rpc_url)
     source_account = server.load_account(agent_kp.public_key)
 
     cap_scvals = [scval.to_string(c) for c in capabilities]
@@ -344,7 +345,7 @@ def submit_claim_task(
     rpc_url = rpc_url or _rpc
     contract_id = contract_id or _cid
 
-    server = SorobanServer(rpc_url)
+    server = get_soroban_server(rpc_url)
     source_account = server.load_account(requester_kp.public_key)
 
     builder = TransactionBuilder(

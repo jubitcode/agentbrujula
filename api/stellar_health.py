@@ -39,6 +39,27 @@ def _xlm_balance(public_key: str, horizon_url: str) -> float | None:
         return None
 
 
+def _horizon_reachable(horizon_url: str) -> bool:
+    """Whether Horizon answers, asked directly.
+
+    Separate from the balance lookup on purpose. `horizon_reachable` used to be
+    derived from it — `horizon_up = balance is not None`, inside an
+    `if public_key:` — so with no orchestrator key configured the field was
+    reported as False without Horizon ever being contacted.
+
+    A QA pass read that as "the backend is disconnected from Stellar" and
+    concluded the on-chain path was broken. Horizon was answering in 0.8s the
+    whole time. The field claims something about Horizon, so it has to ask
+    Horizon; the absence of a key is a different fact and has its own field.
+    """
+    try:
+        import httpx
+
+        return httpx.get(horizon_url, timeout=5.0).status_code < 500
+    except Exception:
+        return False
+
+
 def _snapshot() -> dict[str, Any]:
     """Build the health snapshot. Cached for _CACHE_TTL seconds."""
     now = time.monotonic()
@@ -49,12 +70,11 @@ def _snapshot() -> dict[str, Any]:
 
     public_key = _orchestrator_public_key()
     balance: float | None = None
-    horizon_up = False
     low = False
 
+    horizon_up = _horizon_reachable(HORIZON_URL)
     if public_key:
         balance = _xlm_balance(public_key, HORIZON_URL)
-        horizon_up = balance is not None
         low = balance is not None and balance < LOW_BALANCE_XLM
 
     data = {

@@ -47,8 +47,23 @@ export function DemoPlayer() {
           fps={DEMO_FPS}
           loop
           autoPlay
+          // Browsers refuse to autoplay media that is not muted, and the Player
+          // counts as media because it mounts an audio tag for frame timing.
+          // Without this the player mounts, renders frame 0, and never advances.
+          initiallyMuted
+          // This composition has no audio at all, so it needs no audio tags.
+          // Dropping them also removes the data: audio element that the site's
+          // Content-Security-Policy would otherwise have to allow.
+          numberOfSharedAudioTags={0}
           style={{ width: "100%", height: "100%" }}
-          controls={false}
+          // Autoplay is a browser policy decision, not ours: it is refused in
+          // background tabs, under some privacy settings, and wherever the page
+          // has not been interacted with. When it is refused the composition
+          // still mounts and renders frame 0 — which looks like a black box.
+          // Controls turn that silent failure into one visible click. This runs
+          // in front of people; it must not be able to fail quietly.
+          controls
+          clickToPlay
           acknowledgeRemotionLicense
         />
       </Suspense>

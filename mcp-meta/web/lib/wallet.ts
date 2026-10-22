@@ -86,6 +86,32 @@ export async function signTransaction(xdr: string): Promise<string> {
   return signedTxXdr;
 }
 
+/**
+ * Sign an arbitrary message with the connected wallet (SEP-43 `signMessage`).
+ *
+ * The wallet applies the SEP-53 framing itself — it prepends
+ * `"Stellar Signed Message:\n"` and hashes with SHA-256 before signing — so
+ * pass the raw message and do NOT pre-hash it. The server reconstructs the same
+ * payload to verify.
+ *
+ * Not every wallet module implements this. Callers must handle the rejection
+ * and fall back to the signed-transaction challenge, which every wallet
+ * supports. Returns the signature as the wallet encodes it (base64 or hex); the
+ * server accepts both.
+ */
+export async function signMessage(message: string): Promise<string> {
+  await ensureInit();
+  await assertWalletOnExpectedNetwork();
+  const { StellarWalletsKit, Networks } = await import("@creit.tech/stellar-wallets-kit");
+  const { signedMessage } = await StellarWalletsKit.signMessage(message, {
+    networkPassphrase: STELLAR_NETWORK === "PUBLIC" ? Networks.PUBLIC : Networks.TESTNET,
+  });
+  if (typeof signedMessage !== "string" || signedMessage.length === 0) {
+    throw new Error("Wallet returned an empty signature for signMessage");
+  }
+  return signedMessage;
+}
+
 export async function getPublicKey(): Promise<string> {
   await ensureInit();
   const { StellarWalletsKit } = await import("@creit.tech/stellar-wallets-kit");

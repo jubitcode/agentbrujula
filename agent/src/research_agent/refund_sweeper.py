@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any, Callable
 
 from .task_store import TaskStore
@@ -15,6 +16,95 @@ StatusFn = Callable[[str], dict]
 
 REASON_DEADLINE_EXPIRED = "deadline_expired"
 REASON_RECONCILED_GONE = "reconciled_chain_gone"
+
+#: Terminal state for a task whose escrow entry can no longer be read on-chain.
+#:
+#: NOT the same as refunded. `get_escrow` traps identically whether the entry
+#: was resolved and removed or merely **evicted because its TTL ran out**, and
+#: an evicted entry can still have funds sitting in the contract. Marking those
+#: "refunded" asserts that money went back to somebody when nobody can show
+#: that it did.
+#:
+#: Measured, 2026-10-20: escrows created in May 2026 return `not_found` while
+#: `usdc-escrow` still holds 0.745 USDC.
+#:
+#: The sweeper stops retrying these — repeated calls against an evicted entry
+#: cannot succeed — but it records them as needing a human rather than as
+#: settled business. Recovery means restoring the archived entry first, which
+#: is a separate operation with its own fees.
+STATUS_ENTRY_UNREADABLE = "escrow_entry_unreadable"
+
+#: Outcome for a task the sweeper declined to act on. Not a failure: nothing
+#: was attempted, nothing is retried, no counter moves.
+OUTCOME_REFUSED = "refused"
+
+#: A Stellar transaction hash is 64 hex characters. A row carrying anything
+#: else never locked funds, so there is no escrow for a refund to return.
+_TX_HASH_LENGTH = 64
+
+
+def refund_authorisation(task: dict, now: float | None = None) -> str | None:
+    """Return why this task must NOT be refunded, or None if it may be.
+
+    The guard the sweeper applies to every task before it touches the network,
+    regardless of which query produced the task. `list_expired` already filters
+    on these conditions; this re-checks them on the row itself, because the
+    filter and the payment live in different places and only one of them moves
+    money.
+
+    What it is defending against, concretely:
+
+    * **A hold.** An operator said hands off this escrow. That is an explicit
+      instruction and it outranks every automated condition below.
+    * **An absent business condition.** A refund is authorised by *one* thing:
+      a deadline that exists and has passed, on a task that locked real funds
+      and has neither settled nor refunded. A row with no deadline, a deadline
+      in the future, or no escrow transaction has nothing to authorise a
+      transfer — and the absence of a condition is not permission to act. An
+      unreadable entry is likewise not permission: it is handled separately,
+      and never recorded as a refund.
+    * **A terminal state.** Already refunded, already settled, dead-lettered,
+      or flagged for manual reconciliation.
+
+    Returned as a string so the caller can record exactly which condition was
+    missing instead of logging "skipped".
+    """
+    now = time.time() if now is None else now
+
+    if task.get("refund_hold"):
+        reason = (task.get("refund_hold_reason") or "no reason recorded").strip()
+        return f"refund hold is set: {reason}"
+
+    status = (task.get("status") or "").strip()
+    if status in (
+        "refunded",
+        "settled",
+        "complete",
+        "refund_failed",
+        STATUS_ENTRY_UNREADABLE,
+    ):
+        return f"terminal status {status!r}"
+
+    if int(task.get("settled") or 0):
+        return "task is marked settled: the money went to the agent"
+    if int(task.get("refunded") or 0):
+        return "task is already marked refunded"
+
+    escrow_tx = (task.get("escrow_tx") or "").strip()
+    if len(escrow_tx) != _TX_HASH_LENGTH:
+        return (
+            "no escrow transaction on the row, so no funds were ever locked"
+            if not escrow_tx
+            else f"escrow_tx is not a transaction hash ({len(escrow_tx)} chars)"
+        )
+
+    deadline = float(task.get("deadline_unix") or 0)
+    if deadline <= 0:
+        return "no deadline recorded: nothing has expired"
+    if deadline >= now:
+        return f"deadline has not passed ({int(deadline - now)}s remaining)"
+
+    return None
 
 
 def process_one_refund(
@@ -40,22 +130,41 @@ def process_one_refund(
     task_id = task["task_id"]
     attempts = int(task.get("refund_attempts") or 0)
 
+    # Before the network, before any write to the row. A task that reaches here
+    # without a valid business condition is a bug upstream, and the right
+    # response to that bug is not to move somebody's money.
+    blocked = refund_authorisation(task)
+    if blocked is not None:
+        return {
+            "task_id": task_id,
+            "outcome": OUTCOME_REFUSED,
+            "reason": blocked,
+            "hash": None,
+        }
+
     try:
         chain_status = status_fn(task_id) or {}
     except Exception as e:
         chain_status = {"status": "unknown", "error": f"status_fn: {e}"}
 
     if chain_status.get("status") == "not_found":
+        # The entry is unreadable. That is NOT proof it was refunded — see
+        # STATUS_ENTRY_UNREADABLE. Stop retrying, because a call against an
+        # entry the contract cannot read will not start working; but do not
+        # record a payment nobody can point at.
         store.update_task(
             task_id,
-            refunded=1,
-            status="refunded",
-            refund_last_error="",
+            status=STATUS_ENTRY_UNREADABLE,
+            refund_last_error=(
+                "escrow entry not readable on-chain: resolved out-of-band, or "
+                "evicted when its TTL expired. Funds may still be held by the "
+                "contract. Needs manual reconciliation."
+            ),
             refund_reason=REASON_RECONCILED_GONE,
         )
         return {
             "task_id": task_id,
-            "outcome": "reconciled",
+            "outcome": "unreadable",
             "reason": REASON_RECONCILED_GONE,
             "hash": None,
         }
@@ -145,7 +254,8 @@ def sweep_expired_refunds(
     Returns:
         {
           "refunded":   int,  # process_one_refund outcome=refunded
-          "reconciled": int,  # process_one_refund outcome=reconciled
+          "unreadable": int,  # entry not readable on-chain; NOT a refund
+          "refused":    int,  # held, or no valid business condition
           "failed":     int,  # any non-success outcome (includes dead-letter)
           "dead_letter":int,  # subset of failed that hit max_attempts
           "skipped":    int,  # eligible tasks beyond max_per_sweep
@@ -156,12 +266,22 @@ def sweep_expired_refunds(
     skipped = max(0, len(eligible) - max_per_sweep)
 
     refunded = 0
-    reconciled = 0
+    unreadable = 0
+    refused = 0
     failed = 0
     dead_letter = 0
 
     for task in to_process:
         task_id = task["task_id"]
+
+        # Checked before the attempt is stamped: a refused task was never
+        # attempted, and stamping it would push its (hypothetical) next attempt
+        # behind a retry window it does not need.
+        blocked = refund_authorisation(task)
+        if blocked is not None:
+            refused += 1
+            continue
+
         store.mark_refund_attempted(task_id)
 
         report = process_one_refund(
@@ -176,8 +296,10 @@ def sweep_expired_refunds(
         outcome = report.get("outcome")
         if outcome == "refunded":
             refunded += 1
-        elif outcome == "reconciled":
-            reconciled += 1
+        elif outcome == "unreadable":
+            unreadable += 1
+        elif outcome == OUTCOME_REFUSED:
+            refused += 1
         elif outcome == "dead_letter":
             dead_letter += 1
             failed += 1
@@ -186,7 +308,14 @@ def sweep_expired_refunds(
 
     return {
         "refunded": refunded,
-        "reconciled": reconciled,
+        # Counted apart from `refunded` on purpose: these are tasks whose money
+        # nobody can account for, and folding them into a refund total is how
+        # that stops being visible.
+        "unreadable": unreadable,
+        # Tasks the guard declined — a hold, or a missing business condition.
+        # Not failures: nothing was attempted. A nonzero count on a quiet
+        # system means something upstream is offering tasks it should not.
+        "refused": refused,
         "failed": failed,
         "dead_letter": dead_letter,
         "skipped": skipped,

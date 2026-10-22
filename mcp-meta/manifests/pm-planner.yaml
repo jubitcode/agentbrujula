@@ -1,0 +1,41 @@
+apiVersion: mcp-meta/v1
+kind: AgentPod
+metadata:
+  name: pm-planner
+  description: "Turns an idea into a project plan"
+spec:
+  command: ["sh", "-c", "P=${VIRTUAL_ENV:-x}/bin/python3; [ -x $P ] || P=../agent/.venv/bin/python3; [ -x $P ] || P=/app/agent/.venv/bin/python3; [ -x $P ] || P=python3; exec $P pods/pm-planner/main.py"]
+  # A plan is one long generation — six milestones, sixteen tasks and their
+  # dependencies, in the user's language. Measured at ~90s on a free model,
+  # and the retry doubles the worst case. The 30s default times out mid-plan.
+  callTimeout: 240s
+  shutdownTimeout: 5s
+  tools:
+    - name: plan
+      description: "Turn a brief into a project plan"
+    - name: revise
+      description: "Produce the next version of a plan from the user's feedback"
+    - name: ping
+      description: "Health check"
+  agentCard:
+    name: "PM Planner"
+    description: "Turns an idea into a plan with milestones, tasks, risks and what it does not know"
+    version: "1.0.0"
+    provider:
+      organization: "Brújula"
+    capabilities:
+      streaming: false
+    defaultInputModes: ["text"]
+    defaultOutputModes: ["text"]
+  skills:
+    - id: "pm-planner"
+      name: "Planificador de proyectos"
+      description: "Convierte tu idea en un plan accionable: objetivo, alcance, hitos, tareas, riesgos y lo que todavía no está decidido"
+      tags: ["planificación", "producto", "proyecto", "pm"]
+      examples:
+        - "Una app para que los vecinos de un barrio compartan herramientas"
+        - "Quiero lanzar un boletín semanal sobre regulación de IA en Latinoamérica"
+        - "Migrar nuestro sistema de facturación a otra plataforma sin cortar el servicio"
+      # Only the FIRST entry is resolved — `ResolveSkill` returns a single FQN
+      # and ignores the rest. `revise` is reached directly through /v1/execute.
+      mapToTools: [plan]

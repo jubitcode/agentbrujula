@@ -90,6 +90,13 @@ The three contracts are deployed once and treated as immutable. Upgrades happen 
 
 ## Hebbian memory
 
+> **Experimental. The learning benefit is not demonstrated.** The repository's own
+> cross-session recall benchmark (`agent/tests/test_hebbian_session_continuity.py`) currently
+> **fails**: it measures recall with memory at 20% and recall without memory at 20% — identical,
+> with no edges carried from one session into the next. The architecture below is implemented and
+> runs; what is *not* established is that it improves agent selection. Treat this section as a
+> description of a mechanism under evaluation, not as a claim about results.
+
 The research agent maintains a knowledge graph that learns from agent outputs and shapes future agent selection. Nodes represent capabilities, agents, and facts extracted from past task results. Edges record co-activation weights that strengthen when an agent succeeds at a related task and decay otherwise.
 
 Weight updates use synapse-wise sigmoidal growth (SNAP). Each edge is bounded in `[0, 1]`, with the steepest plasticity in the mid-range, so noisy late-cycle reinforcements cannot keep piling on top of an already-saturated edge. A spaced-repetition bonus amplifies updates to edges that have been quiet for a while, modeling the memory-strengthening effect of revisiting a topic after a gap. A periodic homeostatic renormalization (the "sleep" cycle) pulls all weights toward a low target with heterogeneous decay, preserving recently-successful edges while letting noise erode.

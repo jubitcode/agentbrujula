@@ -1,4 +1,4 @@
-.PHONY: agent-test api-dev contracts-build contracts-deploy contracts-deploy-mainnet mcp-build web-dev web-test web-build
+.PHONY: agent-test api-dev contracts-build contracts-deploy contracts-deploy-mainnet mcp-build verify web-dev web-test web-build
 
 NETWORK ?= testnet
 SOURCE  ?= orchestrator
@@ -15,6 +15,11 @@ endif
 
 agent-test:
 	cd agent && uv run pytest
+
+# Run every suite and regenerate VERIFICATION.md with the real result,
+# failures included. Anyone who clones the repo can reproduce this.
+verify:
+	./scripts/verify.sh
 
 api-dev:
 	cd agent && PYTHONPATH=../api uv run uvicorn server:app --reload --port 5050

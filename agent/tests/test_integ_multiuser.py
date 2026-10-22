@@ -110,7 +110,7 @@ class TestExpiredTaskCleanup:
         store.create_task("new", wallet_address="GA")
 
         removed = store.cleanup(max_age_seconds=1000)
-        assert removed == 1
+        assert removed["deleted"] == 1
         assert store.get_task("old") is None
         assert store.get_task("new") is not None
         store.close()
