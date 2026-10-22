@@ -163,3 +163,882 @@ body {
   0%, 100% { opacity: 0.4; transform: scale(1); }
   50%      { opacity: 1;   transform: scale(1.4); }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Shared layout, states and responsive behaviour.
+
+   Everything below this line was added when the frontend was audited: the
+   app had eleven different max-widths, eight hand-rolled loading states, six
+   error states, and — in 165 lines of CSS and 4.200 lines of JSX — exactly
+   one responsive utility. Horizontal page scroll was measurable on all ten
+   routes at 390px.
+
+   The rules are desktop-first (`max-width` queries) because the existing
+   sheet is, and rewriting it mobile-first would have been a refactor rather
+   than a fix.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Page container ────────────────────────────────────────────────────
+   One width for every screen, and it is the <main> that sets it — the same
+   900px the header uses, so page content and the wordmark above it line up.
+   The screens each declared their own max-width, eleven between them,
+   several wider than the main that contains them and therefore inert. */
+.page {
+  width: 100%;
+  margin: 0 auto;
+}
+/* Reading width for prose. Lines of 110 characters are not readable, which
+   is what a full-width paragraph at 1440px gives you. */
+.page-prose { max-width: 68ch; }
+
+/* Nothing may push the page wider than the viewport. `min-width: 0` is the
+   fix for flex and grid children, whose default `auto` minimum refuses to
+   shrink below their content — the cause of most of the overflow here. */
+* { min-width: 0; }
+html, body { max-width: 100%; overflow-x: hidden; }
+
+/* ── Type scale ────────────────────────────────────────────────────────
+   Fluid, so a 40px headline is not 40px on a 390px screen. */
+.t-hero {
+  font-size: clamp(28px, 7vw, 40px);
+  font-weight: 700;
+  letter-spacing: -1.4px;
+  line-height: 1.12;
+  margin: 0 0 14px;
+}
+.t-h2 {
+  font-size: clamp(22px, 5vw, 26px);
+  font-weight: 700;
+  letter-spacing: -0.6px;
+  margin: 0 0 10px;
+}
+.t-h3 { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+.t-intro {
+  font-size: clamp(14px, 3.6vw, 16px);
+  color: var(--muted);
+  line-height: 1.6;
+  max-width: 62ch;
+  margin: 0;
+}
+.t-body { font-size: 14px; line-height: 1.65; }
+.t-small { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+/* Long strings — task titles, risks, open questions — break instead of
+   stretching the layout. */
+.t-wrap { overflow-wrap: anywhere; word-break: break-word; }
+
+/* A contract address, a transaction hash, a public key.
+   `.t-wrap` above is for prose, and its `word-break: break-word` lets a long
+   word overflow its box rather than shrinking the box's min-content width —
+   right for a sentence, wrong for a 56-character identifier, which is why the
+   escrow contract address still hung 25px off a 390px screen with `.t-wrap`
+   on it. These break at any character, because there is nowhere meaningful to
+   break them. */
+.mono-id {
+  font-family: var(--mono);
+  word-break: break-all;
+  max-width: 100%;
+}
+
+/* ── Focus ─────────────────────────────────────────────────────────────
+   Visible and identical everywhere. It was inconsistent, and on several
+   controls invisible. */
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r);
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────
+   `.btn-primary` and `.btn-ghost` already existed; four screens ignored
+   them and rolled their own inline. These only add what was missing. */
+.btn-primary, .btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: inherit;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.btn-sm { padding: 6px 14px; font-size: 13px; }
+
+/* ── Chips ─────────────────────────────────────────────────────────────── */
+.chip {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.chip:hover { border-color: var(--border2); color: var(--text); }
+.chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: rgba(59,130,246,.1);
+  color: var(--accent);
+}
+/* A tag shown as information rather than a control. */
+.tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--dim);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+/* ── States ────────────────────────────────────────────────────────────
+   One presentation for loading, error and empty, used by <Loading/>,
+   <ErrorState/> and <EmptyState/>. They are mutually exclusive by
+   construction: the components render one of the three, never two. */
+.state {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  padding: 32px 24px;
+  text-align: center;
+}
+.state-title { font-size: 14px; color: var(--text); margin: 0 0 6px; }
+.state-hint { font-size: 13px; color: var(--dim); line-height: 1.6; margin: 0; max-width: 46ch; margin-inline: auto; }
+.state-error { background: rgba(239,68,68,0.06); border-color: rgba(239,68,68,.28); }
+.state-error .state-title { color: #ef4444; }
+.state-actions { margin-top: 16px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+/* The technical detail behind a friendly message. Present, not shouted. */
+.state-detail {
+  margin-top: 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--dim);
+  text-align: left;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 10px 12px;
+  overflow-wrap: anywhere;
+}
+
+/* An inline spinner for states that sit next to content rather than
+   replacing it. */
+.spinner {
+  width: 14px; height: 14px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  display: inline-block;
+  animation: spin 700ms linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 2s; }
+  .hero-anim { animation: none; }
+  * { transition-duration: 0.01ms !important; }
+}
+
+/* ── Disclosure (the PM brief, kept visible but collapsed) ─────────────── */
+.disclosure summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.disclosure summary::-webkit-details-marker { display: none; }
+.disclosure summary::after {
+  content: "";
+  width: 7px; height: 7px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.2s;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.disclosure[open] summary::after { transform: rotate(-135deg); }
+
+/* ── Grids that must collapse ─────────────────────────────────────────── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.grid-auto { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Access and application shell.
+
+   Layout taken from the two prototypes (brujula_login_demo.html and
+   brujula_marketplace_demo.html) — the split sign-in, the fixed sidebar, the
+   topbar, the hero, the metric row, the agent grid. The palette is NOT taken
+   from them: those are lime-on-paper and Brújula is dark, so every colour
+   here resolves to the tokens already declared at the top of this file.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Sign-in: two panels ───────────────────────────────────────────────── */
+.auth-shell {
+  display: grid;
+  /* 1:2 — the pitch on the left, the thing you came to do on the right.
+     It was 1:1, which gave equal weight to a paragraph you read once and a
+     form you have to use. `minmax(0, …)` on both so a long wallet address
+     cannot blow the column out. */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  min-height: 100vh;
+}
+.auth-intro {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: clamp(24px, 3.4vw, 56px);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 40px;
+  /* The heading sizes against this column, not the window. At 1:2 the
+     column is a third of the viewport, so a viewport-based size was always
+     guessing: at 1366 it asked for 52px in 455px of space and "Tu
+     tranquilidad." broke onto a fourth line. */
+  container-type: inline-size;
+}
+.auth-intro h1 {
+  font-size: clamp(26px, 12cqw, 52px);
+  font-weight: 700;
+  letter-spacing: -1.8px;
+  line-height: 1.08;
+  margin: 0;
+  text-wrap: balance;
+}
+.auth-panel {
+  padding: clamp(28px, 5vw, 64px);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+.auth-panel-inner { width: 100%; max-width: 520px; margin: 0 auto; }
+
+/* The trust line. Worth its own treatment because it is the sentence that
+   decides whether someone connects a wallet to a site they just met. */
+.auth-trust {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  padding: 14px 16px;
+}
+
+/* ── The three steps ───────────────────────────────────────────────────── */
+.step-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 10px;
+}
+.role-grid { display: grid; gap: 10px; margin-top: 4px; }
+.role-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  padding: 18px;
+  border-radius: var(--r2);
+  border: 1px solid var(--border2);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color .15s, background .15s, transform .15s;
+}
+.role-option:hover:not(:disabled) { border-color: var(--accent); transform: translateY(-1px); }
+.role-option:disabled { opacity: .55; cursor: not-allowed; }
+.role-option strong { display: block; font-size: 15px; }
+.role-option small { display: block; font-size: 12px; color: var(--muted); margin-top: 3px; }
+.role-icon {
+  width: 38px; height: 38px; flex-shrink: 0;
+  border-radius: var(--r2);
+  background: rgba(59,130,246,.12);
+  color: var(--accent);
+  display: grid; place-items: center;
+  font-size: 17px;
+}
+.badge-soon {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--dim);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-pill);
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+.back-action {
+  background: none; border: 0; padding: 0;
+  color: var(--muted); font-size: 13px; cursor: pointer;
+  margin-bottom: 14px;
+}
+.back-action:hover { color: var(--text); }
+
+/* Review card: label on the left, value on the right. */
+.review-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  padding: 4px 16px;
+  margin: 18px 0;
+}
+.review-row {
+  display: flex; justify-content: space-between; gap: 16px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.review-row:last-child { border-bottom: 0; }
+.review-row span { color: var(--muted); }
+.review-row strong { text-align: right; overflow-wrap: anywhere; }
+
+/* ── Application shell: sidebar + topbar ───────────────────────────────── */
+/* The shell owns the window; the content column owns the scroll.
+   It used to be `min-height: 100vh` with a `sticky` sidebar, and sticky does
+   not work on a stretched grid item: the item already spans the whole row,
+   so there is nothing for it to stick against. The sidebar scrolled away
+   with the page and left its own column empty below — it read as half a
+   sidebar painted over the page.
+   Pinning the shell to the viewport and giving the content its own
+   overflow means the rail is always exactly one screen tall, and only the
+   part that has more to show moves. */
+.app-shell {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  height: 100vh;
+  /* Guards against a wide child stretching the shell past the viewport and
+     reintroducing a page-level scrollbar beside the column's own. */
+  overflow: hidden;
+}
+.app-sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 22px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  height: 100%;
+  /* Its own scroll, for a short window or a long menu. */
+  overflow-y: auto;
+}
+/* The content column: full height, and the only thing that scrolls. */
+.app-main {
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+}
+.side-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  color: var(--dim);
+  font-weight: 600;
+  padding: 0 12px;
+  margin-bottom: 8px;
+}
+.side-nav { display: grid; gap: 3px; }
+.side-nav a, .side-nav button {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; text-align: left;
+  background: transparent; border: 0;
+  padding: 11px 12px;
+  border-radius: var(--r);
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.side-nav a:hover, .side-nav button:hover:not(:disabled) { background: var(--surface2); color: var(--text); }
+.side-nav a[aria-current="page"] { background: var(--surface2); color: var(--text); font-weight: 500; }
+.side-nav button:disabled { opacity: .5; cursor: not-allowed; }
+.side-ico { width: 18px; text-align: center; flex-shrink: 0; opacity: .85; }
+.side-foot { margin-top: auto; display: grid; gap: 10px; }
+.side-wallet {
+  border: 1px solid var(--border2);
+  background: var(--bg);
+  border-radius: var(--r2);
+  padding: 13px;
+}
+.side-wallet small {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: 1px;
+  color: var(--dim); display: block; margin-bottom: 8px;
+}
+.side-wallet-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; }
+
+.app-topbar {
+  height: 68px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px;
+  padding: 0 clamp(16px, 3vw, 34px);
+  position: sticky; top: 0; z-index: 30;
+  background: rgba(10,10,10,.92);
+  backdrop-filter: blur(12px);
+}
+.breadcrumb { font-size: 13px; color: var(--muted); }
+.breadcrumb .sep { color: var(--dim); margin: 0 7px; }
+.status-pill {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: rgba(34,197,94,.10);
+  color: var(--green);
+  border: 1px solid rgba(34,197,94,.25);
+  padding: 5px 10px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+.avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(59,130,246,.15); color: var(--accent);
+  display: grid; place-items: center;
+  font-size: 13px; font-weight: 600;
+  flex-shrink: 0;
+}
+.app-content { padding: clamp(20px, 3vw, 34px) clamp(16px, 3vw, 34px) 64px; max-width: 1240px; margin: 0 auto; }
+
+/* ── Hero and metrics ──────────────────────────────────────────────────── */
+.app-hero {
+  background: linear-gradient(135deg, rgba(59,130,246,.10), rgba(59,130,246,.03));
+  border: 1px solid rgba(59,130,246,.22);
+  border-radius: 20px;
+  padding: clamp(24px, 3.5vw, 36px);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 24px; flex-wrap: wrap;
+}
+.app-hero .eyebrow {
+  font-family: var(--mono);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 1.4px;
+  color: var(--accent); font-weight: 600;
+}
+.metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 14px; margin: 20px 0 30px; }
+.metric { background: var(--surface); border: 1px solid var(--border); border-radius: 15px; padding: 16px 18px; }
+.metric-label { font-size: 12px; color: var(--muted); }
+.metric-value { font-size: clamp(20px, 2.4vw, 25px); font-weight: 700; letter-spacing: -.6px; margin-top: 5px; }
+.metric-note { font-size: 11px; color: var(--dim); margin-top: 4px; }
+
+/* ── Agent cards ───────────────────────────────────────────────────────── */
+.agent-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; }
+.agent-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  padding: 20px;
+  display: flex; flex-direction: column;
+  transition: transform .2s, border-color .2s;
+}
+.agent-card:hover { transform: translateY(-3px); border-color: var(--border2); }
+.agent-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.agent-avatar {
+  width: 44px; height: 44px; border-radius: 14px;
+  background: rgba(59,130,246,.12); color: var(--accent);
+  display: grid; place-items: center; font-size: 19px; flex-shrink: 0;
+}
+.agent-verified {
+  font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em;
+  text-transform: uppercase;
+  background: rgba(34,197,94,.10); color: var(--green);
+  border: 1px solid rgba(34,197,94,.22);
+  border-radius: 6px; padding: 4px 7px; white-space: nowrap;
+}
+.agent-card h3 { font-size: 16px; margin: 14px 0 4px; }
+.agent-card .creator { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+.agent-card p { color: var(--muted); font-size: 13px; line-height: 1.6; margin: 12px 0; flex: 1; }
+.card-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  border-top: 1px solid var(--border); padding-top: 15px; margin-top: 15px;
+}
+.price { font-size: 18px; font-weight: 700; }
+.price small { font-size: 11px; color: var(--muted); font-weight: 400; margin-left: 3px; }
+
+/* The sections as a horizontal row, for when the sidebar is hidden. */
+.mobile-nav { display: none; }
+@media (max-width: 860px) {
+  .mobile-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    padding: 10px clamp(16px, 3vw, 34px) 0;
+  }
+  .mobile-nav a {
+    padding: 8px 14px;
+    font-size: 13px;
+    border-radius: var(--r);
+    text-decoration: none;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .mobile-nav a[aria-current="page"] { background: var(--surface2); color: var(--text); font-weight: 500; }
+}
+
+@media (max-width: 1050px) {
+  .agent-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+/* Two columns for as long as they fit.
+   This used to stack at 900px, which is wider than plenty of real windows:
+   a netbook, or anyone whose browser is not maximised, got the pitch above
+   the form instead of beside it. Measured, 1:2 still reads at 760 — the
+   form column has 500px there, more than the content needs.
+
+   Below that the pitch goes on top, shortened: on a small screen nobody
+   should scroll past three lines of copy to reach the button. */
+@media (max-width: 760px) {
+  .auth-shell { grid-template-columns: 1fr; min-height: 0; }
+  .auth-intro {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    gap: 18px;
+    padding: 20px 18px 22px;
+  }
+  .auth-intro h1 { font-size: clamp(24px, 7.2vw, 34px); }
+  /* The trust line stays — it is the sentence that decides whether someone
+     connects a wallet — but it stops being a panel of its own. */
+  .auth-trust { padding: 11px 13px; font-size: 11.5px; }
+  .auth-panel { padding: 24px 18px 40px; }
+}
+@media (max-width: 860px) {
+  /* The sidebar becomes the horizontal nav that was already there.
+     With no rail to keep pinned there is nothing to hold to the viewport,
+     so the page scrolls normally — which is also what a phone expects. */
+  .app-shell { grid-template-columns: 1fr; height: auto; min-height: 100vh; overflow: visible; }
+  .app-sidebar { display: none; }
+  .app-main { height: auto; overflow: visible; }
+  .metrics { grid-template-columns: 1fr; }
+  .agent-grid { grid-template-columns: 1fr; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   PM workspace, plan document, escrow bar and signing confirmation.
+
+   Shapes from the marketplace prototype; colours from the tokens above.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── The brief, with room to think ─────────────────────────────────────── */
+.workspace {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: clamp(20px, 3vw, 34px);
+}
+.workspace-grid { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 24px; }
+.workspace-input {
+  width: 100%;
+  min-height: 260px;
+  resize: vertical;
+  border: 1px solid var(--border2);
+  border-radius: 13px;
+  padding: 16px;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.65 inherit;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.workspace-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,.12); }
+.workspace-hint { display: flex; justify-content: space-between; gap: 12px; color: var(--dim); font-size: 11px; margin-top: 8px; }
+.workspace-side {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  padding: 20px;
+  display: flex; flex-direction: column; justify-content: space-between; gap: 22px;
+}
+.workspace-side ul { padding-left: 18px; margin: 10px 0 0; color: var(--muted); font-size: 13px; line-height: 1.9; }
+
+/* ── The plan, as a document ───────────────────────────────────────────── */
+.plan-layout { display: grid; grid-template-columns: minmax(260px, 330px) minmax(0,1fr); gap: 24px; align-items: start; }
+.plan-controls {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 22px;
+  position: sticky;
+  top: 86px;
+}
+/* The versions, as a row of pills rather than a stack of full documents.
+   Two plans stacked made the page 4.800px tall and nothing said where one
+   ended; only the selected one is rendered now. */
+.version-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0 18px; }
+.version-pill {
+  font-family: var(--mono); font-size: 11px;
+  padding: 6px 11px; border-radius: var(--radius-pill);
+  border: 1px solid var(--border2); background: transparent;
+  color: var(--muted); cursor: pointer; transition: all .15s;
+}
+.version-pill[aria-pressed="true"] { border-color: var(--accent); background: rgba(59,130,246,.1); color: var(--accent); }
+
+.plan-document {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: clamp(24px, 4vw, 56px);
+  max-width: 860px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.25);
+}
+.doc-topline {
+  display: flex; justify-content: space-between; gap: 12px;
+  border-bottom: 2px solid var(--border2);
+  padding-bottom: 13px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 1.1px;
+  color: var(--dim); text-transform: uppercase;
+}
+.doc-body { font-size: 14px; line-height: 1.75; }
+.doc-body h2 { font-size: clamp(24px, 3vw, 30px); letter-spacing: -.8px; margin: 28px 0 8px; }
+.doc-body h3 {
+  font-size: 13px; margin: 30px 0 10px; color: var(--text);
+  text-transform: uppercase; letter-spacing: .08em; font-weight: 600;
+  padding-bottom: 6px; border-bottom: 1px solid var(--border);
+}
+.doc-body p { color: var(--muted); }
+.doc-body ul, .doc-body ol { padding-left: 20px; color: var(--muted); margin: 0; }
+.doc-body li { margin-bottom: 5px; }
+.doc-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 20px 0; }
+.doc-meta div { background: var(--bg); border: 1px solid var(--border); padding: 12px; border-radius: 8px; }
+.doc-meta span { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--dim); }
+.doc-meta strong { display: block; margin-top: 4px; font-size: 13px; }
+.doc-signoff {
+  border-top: 1px solid var(--border); margin-top: 44px; padding-top: 16px;
+  display: flex; flex-direction: column; gap: 4px;
+  color: var(--dim); font-size: 11px;
+}
+.doc-signoff strong { font-size: 13px; color: var(--text); }
+
+/* ── Escrow bar: present only while a contract is open ─────────────────── */
+.escrow-bar {
+  /* Bottom corner, not mid-right.
+     The prototype centres it vertically against the right edge, which at
+     1024px sat on top of the content column — measured: the bar started at
+     790px and the panel beside it ran to 962px. A corner stays out of the
+     reading path at every width. */
+  position: fixed; right: 18px; bottom: 18px;
+  z-index: 40;
+  width: 216px;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 16px;
+  box-shadow: 0 14px 40px rgba(0,0,0,.45);
+  padding: 16px;
+  display: grid; gap: 9px;
+}
+/* Room for the bar, so it never sits on the last thing on the page. */
+body.has-escrow-bar .app-content { padding-bottom: 200px; }
+@media (max-width: 900px) {
+  body.has-escrow-bar .app-content { padding-bottom: 230px; }
+}
+
+.escrow-bar-id { font-family: var(--mono); font-size: 10px; letter-spacing: 1px; color: var(--dim); }
+.escrow-bar-amount { font-size: 12px; color: var(--muted); }
+.escrow-bar-amount b { color: var(--text); font-size: 13px; font-family: var(--mono); }
+.escrow-bar-flow { display: flex; gap: 4px; flex-wrap: wrap; font-size: 10px; }
+.escrow-bar-flow span {
+  padding: 3px 7px; border-radius: var(--radius-pill);
+  background: var(--bg); color: var(--dim); font-family: var(--mono);
+}
+.escrow-bar-flow span.active { background: rgba(59,130,246,.15); color: var(--accent); font-weight: 600; }
+
+/* ── Confirmation before a signature ───────────────────────────────────── */
+.sign-overlay {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(5,10,8,.82);
+  backdrop-filter: blur(5px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 18px;
+}
+.sign-modal {
+  width: min(520px, 100%);
+  max-height: 90vh; overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 20px;
+  padding: 26px;
+  box-shadow: 0 25px 80px rgba(0,0,0,.5);
+}
+.sign-flow {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  padding: 14px; display: grid; gap: 9px;
+  font-size: 13px; margin-bottom: 16px;
+}
+.sign-flow .row { display: flex; justify-content: space-between; gap: 12px; }
+.sign-flow .row span:first-child { color: var(--muted); }
+.sign-flow .row strong { font-family: var(--mono); overflow-wrap: anywhere; text-align: right; }
+.sign-list { margin: 0 0 18px; padding-left: 20px; font-size: 13px; color: var(--muted); line-height: 1.75; }
+.sign-actions { display: flex; gap: 10px; }
+.sign-actions button { flex: 1; }
+
+@media (max-width: 980px) {
+  .workspace-grid { grid-template-columns: 1fr; }
+  .plan-layout { grid-template-columns: 1fr; }
+  .plan-controls { position: static; }
+}
+@media (max-width: 900px) {
+  .escrow-bar {
+    right: auto; left: 50%; bottom: 14px;
+    transform: translateX(-50%);
+    width: min(420px, 92vw);
+  }
+}
+@media (max-width: 640px) {
+  .doc-meta { grid-template-columns: 1fr; }
+  .sign-actions { flex-direction: column; }
+}
+
+/* ── Simulated contract ────────────────────────────────────────────────
+   The amber is doing a job here, not decorating: every surface that shows
+   money which is not real wears it, so the distinction survives a
+   screenshot taken out of context. */
+.demo-banner {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  background: rgba(245,158,11,.07);
+  border: 1px solid rgba(245,158,11,.30);
+  border-radius: var(--r2);
+  padding: 13px 15px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--amber);
+  margin-bottom: 22px;
+}
+.demo-badge {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--amber);
+  background: rgba(245,158,11,.12);
+  border: 1px solid rgba(245,158,11,.30);
+  border-radius: var(--radius-pill);
+  padding: 3px 9px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.contract-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: clamp(20px, 3vw, 30px);
+}
+.contract-terms {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r2);
+  padding: 4px 16px;
+  margin: 18px 0;
+}
+.contract-line {
+  display: flex; justify-content: space-between; gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.contract-line:last-child { border-bottom: 0; }
+.contract-line > span { color: var(--muted); flex-shrink: 0; }
+.contract-line > strong { text-align: right; overflow-wrap: anywhere; }
+.contract-price { font-size: 22px; font-weight: 700; letter-spacing: -.5px; }
+.contract-price small { font-size: 11px; color: var(--muted); font-weight: 400; margin-left: 6px; }
+
+.contract-checks { display: grid; gap: 9px; margin: 18px 0 22px; }
+.contract-check { display: flex; gap: 9px; font-size: 13px; color: var(--muted); line-height: 1.55; }
+.contract-check span { color: var(--green); font-weight: 700; flex-shrink: 0; }
+
+/* Deposit progress */
+.progress-track {
+  height: 7px;
+  background: var(--surface2);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+  margin: 12px 0;
+}
+.progress-bar {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  border-radius: var(--radius-pill);
+  transition: width .55s cubic-bezier(.4,0,.2,1);
+}
+.progress-head { display: flex; justify-content: space-between; font-size: 12px; font-weight: 600; }
+
+/* The step row in the contract's own state panel */
+.stage-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0; }
+.stage-pill {
+  font-family: var(--mono); font-size: 10.5px;
+  padding: 5px 10px; border-radius: var(--radius-pill);
+  background: var(--bg); color: var(--dim);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.stage-pill.done { color: var(--green); border-color: rgba(34,197,94,.3); }
+.stage-pill.now { color: var(--amber); border-color: rgba(245,158,11,.4); background: rgba(245,158,11,.08); font-weight: 600; }
+
+.activity { display: grid; gap: 12px; margin-top: 12px; }
+.activity-item { border-left: 2px solid var(--border2); padding-left: 12px; }
+.activity-item strong { font-size: 12.5px; display: block; }
+.activity-item span { font-size: 11.5px; color: var(--dim); }
+
+/* The decision, when the plan is in and the money is not */
+.decide-card {
+  background: rgba(245,158,11,.06);
+  border: 1px solid rgba(245,158,11,.28);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.decide-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.btn-dispute {
+  background: rgba(239,68,68,.10);
+  color: #ef4444;
+  border: 1px solid rgba(239,68,68,.28);
+  border-radius: var(--r);
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .15s;
+}
+.btn-dispute:hover { background: rgba(239,68,68,.16); }
+
+@media (max-width: 640px) {
+  .decide-actions { flex-direction: column; }
+  .decide-actions button { width: 100%; }
+}
+
+/* ── Responsive ────────────────────────────────────────────────────────
+   Verified at 1440×900, 1280×800, 768×1024 and 390×844. */
+@media (max-width: 860px) {
+  .grid-2 { grid-template-columns: 1fr; gap: 14px; }
+}
+
+@media (max-width: 640px) {
+  .card { padding: 16px; }
+  .state { padding: 24px 16px; }
+  .btn-primary, .btn-ghost { padding: 10px 18px; width: 100%; }
+  .btn-inline { width: auto; }
+  .grid-auto { grid-template-columns: 1fr; }
+}
+
+/* The /hire stepper: short form on a phone, full row from 640px. The full row
+   is aria-hidden because the compact one already announces the same thing. */
+.hire-stepper-compact { display: block; }
+.hire-stepper-full { display: none; }
+@media (min-width: 640px) {
+  .hire-stepper-compact { display: none; }
+  .hire-stepper-full { display: flex; align-items: center; gap: 8px; }
+}
